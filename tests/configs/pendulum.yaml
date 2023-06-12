@@ -1,0 +1,28 @@
+seed: 6
+env_id: "Pendulum-v1"
+project_name: "Pendulum-test-1"
+time_limit: 200
+agent:
+  discount: 0.99
+  init_ent_coef: 1.0
+  lr_actor: 0.001
+  weight_decay_actor: 1e-5
+  lr_critic: 0.001
+  weight_decay_critic: 1e-5
+  lr_alpha: 0.0005
+  weight_decay_alpha: 0.0
+  actor_features: [ 64, 64]
+  critic_features: [ 256, 256]
+  scale_reward: 1
+  tune_entropy_coef: True
+  tau: 0.005
+  batch_size: 128
+  train_steps: 1
+trainer:
+  eval_freq: 200
+  total_train_steps: 100000
+  buffer_size: 1000000
+  exploration_steps: 1000
+  eval_episodes: 1
+  train_freq: 1
+  rollout_steps: 1
