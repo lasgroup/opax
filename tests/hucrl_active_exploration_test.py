@@ -1,15 +1,15 @@
 from argparse_dataclass import ArgumentParser
 from typing import Any
 import yaml
-from mbse.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
-from mbse.agents.model_based.model_based_agent import ModelBasedAgent
+from opax.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
+from opax.agents.model_based.model_based_agent import ModelBasedAgent
 from dataclasses import dataclass, field
 import wandb
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.rescale_action import RescaleAction
-from mbse.models.environment_models.pendulum_swing_up import PendulumSwingUpEnv, PendulumDynamicsModel
-from mbse.utils.vec_env.env_util import make_vec_env
-from mbse.models.active_learning_model import ActiveLearningHUCRLModel
+from opax.models.environment_models.pendulum_swing_up import PendulumSwingUpEnv, PendulumDynamicsModel
+from opax.utils.vec_env.env_util import make_vec_env
+from opax.models.active_learning_model import ActiveLearningHUCRLModel
 
 OptState = Any
 

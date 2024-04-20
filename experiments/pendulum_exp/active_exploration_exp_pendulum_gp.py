@@ -1,9 +1,9 @@
 from gym.wrappers import RescaleAction, TimeLimit
-from mbse.utils.vec_env.env_util import make_vec_env
-from mbse.models.environment_models.pendulum_swing_up import PendulumReward, CustomPendulumEnv, PendulumDynamicsModel
-from mbse.models.gp_dynamics_model import GPDynamicsModel, GPSamplingType
-from mbse.agents.model_based.model_based_agent import ModelBasedAgent
-from mbse.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
+from opax.utils.vec_env.env_util import make_vec_env
+from opax.models.environment_models.pendulum_swing_up import PendulumReward, CustomPendulumEnv, PendulumDynamicsModel
+from opax.models.gp_dynamics_model import GPDynamicsModel, GPSamplingType
+from opax.agents.model_based.model_based_agent import ModelBasedAgent
+from opax.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
 import numpy as np
 import time
 import json
@@ -23,7 +23,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
                buffer_size: int, exploration_steps: int, eval_episodes: int, train_freq: int, train_steps: int,
                num_epochs: int, rollout_steps: int, normalize: bool, action_normalize: bool, validate: bool,
                record_test_video: bool, validation_buffer_size: int, validation_batch_size: int,
-               seed: int, exploration_strategy: str, use_log: bool, use_al: bool,
+               seed: int, exploration_strategy: str, use_log: bool, use_al: bool, action_cost: float = 0.0,
                time_limit_eval: Optional[int] = None):
     """ Run experiment for a given method and environment. """
     import jax.numpy as jnp
@@ -99,6 +99,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             pred_diff=True,
             sampling_type=GPSamplingType(optimistic=False, mean=False, random=True),
             beta=beta,
+            action_cost=action_cost,
         )
         dynamics_model = [dynamics_model]
         video_prefix += 'PETS'
@@ -116,6 +117,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             pred_diff=True,
             sampling_type=GPSamplingType(optimistic=True, mean=False, random=False),
             beta=beta,
+            action_cost=action_cost,
         )
         dynamics_model = [dynamics_model]
         video_prefix += 'HUCRL'
@@ -129,6 +131,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             pred_diff=True,
             sampling_type=GPSamplingType(optimistic=True, mean=False, random=False),
             beta=beta,
+            action_cost=action_cost,
         )
         dynamics_model = [dynamics_model]
 
@@ -258,6 +261,7 @@ def main(args):
         use_log=args.use_log,
         use_al=args.use_al,
         time_limit_eval=args.time_limit_eval,
+        action_cost=args.action_cost,
     )
 
     t_end = time.time()
@@ -332,6 +336,7 @@ if __name__ == '__main__':
     parser.add_argument('--exploration_strategy', type=str, default='Optimistic')
     parser.add_argument('--use_log', default=False, action="store_true")
     parser.add_argument('--use_al', default=False, action="store_true")
+    parser.add_argument('--action_cost', type=float, default=0.0)
     parser.add_argument('--time_limit_eval', type=int, default=50)
 
     # general args

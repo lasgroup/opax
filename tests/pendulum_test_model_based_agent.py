@@ -1,15 +1,15 @@
 from argparse_dataclass import ArgumentParser
 from typing import Any
 import yaml
-from mbse.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
-from mbse.agents.model_based.model_based_agent import ModelBasedAgent
+from opax.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
+from opax.agents.model_based.model_based_agent import ModelBasedAgent
 from dataclasses import dataclass, field
 import wandb
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.rescale_action import RescaleAction
-from mbse.models.environment_models.pendulum_swing_up import PendulumSwingUpEnv, PendulumDynamicsModel
-from mbse.utils.vec_env.env_util import make_vec_env
-from mbse.models.bayesian_dynamics_model import BayesianDynamicsModel
+from opax.models.environment_models.pendulum_swing_up import PendulumSwingUpEnv, PendulumDynamicsModel
+from opax.utils.vec_env.env_util import make_vec_env
+from opax.models.bayesian_dynamics_model import BayesianDynamicsModel
 from jax.config import config
 config.update("jax_log_compiles", 1)
 

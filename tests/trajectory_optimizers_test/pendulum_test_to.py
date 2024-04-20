@@ -1,10 +1,10 @@
 import numpy as np
 
-from mbse.models.environment_models.pendulum_swing_up import CustomPendulumEnv, PendulumReward, PendulumDynamicsModel
-from mbse.optimizers.cem_trajectory_optimizer import CemTO
-from mbse.optimizers.trajax_trajectory_optimizer import TraJaxTO, ILQRHyperparams
+from opax.models.environment_models.pendulum_swing_up import CustomPendulumEnv, PendulumReward, PendulumDynamicsModel
+from opax.optimizers.cem_trajectory_optimizer import CemTO
+from opax.optimizers.trajax_trajectory_optimizer import TraJaxTO, ILQRHyperparams
 import time
-from mbse.utils.vec_env.env_util import make_vec_env
+from opax.utils.vec_env.env_util import make_vec_env
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.rescale_action import RescaleAction
 

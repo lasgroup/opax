@@ -1,11 +1,11 @@
 from gym.wrappers import RescaleAction, TimeLimit
-from mbse.utils.vec_env.env_util import make_vec_env
-from mbse.utils.vec_env.subproc_vec_env import SubprocVecEnv
-from mbse.models.environment_models.pendulum_swing_up import PendulumReward, CustomPendulumEnv, PendulumDynamicsModel
-from mbse.models.active_learning_model import ActiveLearningHUCRLModel, ActiveLearningPETSModel
-from mbse.models.hucrl_model import HUCRLModel
-from mbse.agents.model_based.model_based_agent import ModelBasedAgent
-from mbse.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
+from opax.utils.vec_env.env_util import make_vec_env
+from opax.utils.vec_env.subproc_vec_env import SubprocVecEnv
+from opax.models.environment_models.pendulum_swing_up import PendulumReward, CustomPendulumEnv, PendulumDynamicsModel
+from opax.models.active_learning_model import ActiveLearningHUCRLModel, ActiveLearningPETSModel
+from opax.models.hucrl_model import HUCRLModel
+from opax.agents.model_based.model_based_agent import ModelBasedAgent
+from opax.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
 import numpy as np
 import time
 import json
@@ -25,7 +25,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
                buffer_size: int, exploration_steps: int, eval_episodes: int, train_freq: int, train_steps: int,
                num_epochs: int, rollout_steps: int, normalize: bool, action_normalize: bool, validate: bool,
                record_test_video: bool, validation_buffer_size: int, validation_batch_size: int,
-               seed: int, exploration_strategy: str, use_log: bool, use_al: bool,
+               seed: int, exploration_strategy: str, use_log: bool, use_al: bool, action_cost: float = 0.0,
                time_limit_eval: Optional[int] = None):
     """ Run experiment for a given method and environment. """
     import jax.numpy as jnp
@@ -53,7 +53,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
         'num_samples': num_samples,
         'num_elites': num_elites,
         'num_steps': num_steps,
-        'exponent': 0.25, 
+        'exponent': 0.25,
         'train_steps_per_model_update': 25,
         'transitions_per_update': 500,
         'sac_kwargs': sac_kwargs,
@@ -116,6 +116,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             use_al_uncertainties=use_al,
             deterministic=deterministic,
             lr=lr,
+            action_cost=action_cost,
         )
 
         dynamics_model_swing_up = ActiveLearningPETSModel(
@@ -131,6 +132,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             use_al_uncertainties=use_al,
             deterministic=deterministic,
             lr=lr,
+            action_cost=action_cost,
         )
         dynamics_model = [dynamics_model_keep_down, dynamics_model_swing_up]
         video_prefix += 'PETS'
@@ -182,6 +184,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             use_al_uncertainties=use_al,
             deterministic=deterministic,
             lr=lr,
+            action_cost=action_cost,
         )
 
         dynamics_model_swing_up = ActiveLearningHUCRLModel(
@@ -197,6 +200,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             use_al_uncertainties=use_al,
             deterministic=deterministic,
             lr=lr,
+            action_cost=action_cost,
         )
         dynamics_model = [dynamics_model_keep_down, dynamics_model_swing_up]
 
@@ -326,6 +330,7 @@ def main(args):
         use_log=args.use_log,
         use_al=args.use_al,
         time_limit_eval=args.time_limit_eval,
+        action_cost=args.action_cost,
     )
 
     t_end = time.time()
@@ -400,6 +405,7 @@ if __name__ == '__main__':
     parser.add_argument('--exploration_strategy', type=str, default='Optimistic')
     parser.add_argument('--use_log', default=False, action="store_true")
     parser.add_argument('--use_al', default=False, action="store_true")
+    parser.add_argument('--action_cost', type=float, default=0.0)
     parser.add_argument('--time_limit_eval', type=int, default=200)
 
     # general args

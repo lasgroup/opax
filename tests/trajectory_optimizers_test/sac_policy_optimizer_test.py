@@ -1,13 +1,15 @@
 import jax.random
 import numpy as np
 
-from mbse.models.environment_models.pendulum_swing_up import CustomPendulumEnv, PendulumReward, PendulumDynamicsModel
-from mbse.optimizers.sac_based_optimizer import SACOptimizer
+from opax.models.environment_models.pendulum_swing_up import CustomPendulumEnv, PendulumReward, PendulumDynamicsModel
+from opax.optimizers.sac_based_optimizer import SACOptimizer
 import time
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.rescale_action import RescaleAction
-from mbse.utils.replay_buffer import ReplayBuffer, Transition
-from mbse.utils.vec_env.env_util import make_vec_env
+from opax.utils.replay_buffer import ReplayBuffer, Transition
+from opax.utils.vec_env.env_util import make_vec_env
+from jax.config import config
+
 
 def rollout_random_policy(env, num_steps, rng):
     rng, reset_rng = jax.random.split(rng, 2)
@@ -85,11 +87,11 @@ obs, _ = env.reset()
 sac_kwargs = {
     'discount': 0.99,
     'init_ent_coef': 1.0,
-    'lr_actor': 0.001,
+    'lr_actor': 1e-3,
     'weight_decay_actor': 1e-5,
-    'lr_critic': 0.001,
+    'lr_critic': 1e-3,
     'weight_decay_critic': 1e-5,
-    'lr_alpha': 0.0005,
+    'lr_alpha': 1e-3,
     'weight_decay_alpha': 0.0,
     'actor_features': [64, 64],
     'critic_features': [256, 256],
@@ -97,24 +99,27 @@ sac_kwargs = {
     'tune_entropy_coef': True,
     'tau': 0.005,
     'batch_size': 128,
-    'train_steps': 350,
+    'train_steps': 100,
 }
 
 policy_optimizer = SACOptimizer(
     dynamics_model_list=dynamics_model_list,
     horizon=horizon,
     action_dim=(1,),
-    train_steps_per_model_update=10,
-    transitions_per_update=200,
+    train_steps_per_model_update=30,
+    transitions_per_update=1000,
     sac_kwargs=sac_kwargs,
     reset_actor_params=False,
+    evaluate_agent=True,
+    evaluation_horizon=100,
+    evaluation_frequency=5,
 )
 
 buffer = ReplayBuffer(
     obs_shape=env.observation_space.shape,
     action_shape=env.action_space.shape,
     max_size=100000,
-    normalize=False,
+    normalize=True,
     action_normalize=False,
     learn_deltas=False
 )
@@ -125,7 +130,6 @@ transitions = rollout_random_policy(env=make_vec_env(CustomPendulumEnv, wrapper_
                                     num_steps=10000, rng=rollout_rng)
 
 buffer.add(transitions)
-train_rng, rng = jax.random.split(rng, 2)
 obs, _ = env.reset()
 # for i in range(200):
 #    action = policy_optimizer.get_action(obs=obs, rng=rng)
@@ -137,8 +141,12 @@ obs, _ = env.reset()
 #     project="sac_opt_test"
 # )
 
+log_compiles = True
+config.update("jax_log_compiles", log_compiles)
+
 for run in range(5):
     t = time.time()
+    train_rng, rng = jax.random.split(rng, 2)
     train_summary = policy_optimizer.train(
         rng=train_rng,
         buffer=buffer,

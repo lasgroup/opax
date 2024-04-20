@@ -1,14 +1,14 @@
 from gym.wrappers import RescaleAction, TimeLimit
-from mbse.utils.vec_env.env_util import make_vec_env
-from mbse.models.environment_models.mountain_car import MountainCarRewardModel, MountainCarDynamics
-from mbse.envs.custom_mountain_car_env import CustomMountainCar
-from mbse.models.active_learning_model import ActiveLearningHUCRLModel, ActiveLearningPETSModel
-from mbse.agents.model_based.model_based_agent import ModelBasedAgent
-from mbse.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
+from opax.utils.vec_env.env_util import make_vec_env
+from opax.models.environment_models.mountain_car import MountainCarRewardModel, MountainCarDynamics
+from opax.envs.custom_mountain_car_env import CustomMountainCar
+from opax.models.active_learning_model import ActiveLearningHUCRLModel, ActiveLearningPETSModel
+from opax.models.hucrl_model import HUCRLModel
+from opax.agents.model_based.model_based_agent import ModelBasedAgent
+from opax.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
 import numpy as np
 import time
 import json
-import os
 import sys
 import argparse
 from experiments.util import Logger, hash_dict, NumpyArrayEncoder
@@ -24,7 +24,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
                buffer_size: int, exploration_steps: int, eval_episodes: int, train_freq: int, train_steps: int,
                num_epochs: int, rollout_steps: int, normalize: bool, action_normalize: bool, validate: bool,
                record_test_video: bool, validation_buffer_size: int, validation_batch_size: int,
-               seed: int, exploration_strategy: str, use_log: bool, use_al: bool,
+               seed: int, exploration_strategy: str, use_log: bool, use_al: bool, action_cost: float = 0.0,
                time_limit_eval: Optional[int] = None):
     """ Run experiment for a given method and environment. """
 
@@ -60,7 +60,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
         'normalize': True,
     }
 
-    lr=5e-4
+    lr = 5e-4
 
 
     # config.update("jax_log_compiles", 1)
@@ -101,6 +101,7 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
             use_al_uncertainties=use_al,
             deterministic=deterministic,
             lr=lr,
+            action_cost=action_cost,
         )
         video_prefix += 'PETS'
     elif exploration_strategy == 'true_model':
@@ -109,22 +110,38 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
         validation_buffer_size = 0
         total_train_steps = 1
     else:
-        dynamics_model = ActiveLearningHUCRLModel(
-            action_space=env.action_space,
-            observation_space=env.observation_space,
-            num_ensemble=num_ensembles,
-            reward_model=reward_model,
-            features=features,
-            pred_diff=pred_diff,
-            beta=beta,
-            seed=seed,
-            use_log_uncertainties=use_log,
-            use_al_uncertainties=use_al,
-            deterministic=deterministic,
-            lr=lr,
-        )
+        if exploration_strategy == 'HUCRL':
+            dynamics_model = HUCRLModel(
+                action_space=env.action_space,
+                observation_space=env.observation_space,
+                num_ensemble=num_ensembles,
+                reward_model=reward_model,
+                features=features,
+                pred_diff=pred_diff,
+                beta=beta,
+                seed=seed,
+                deterministic=deterministic,
+                lr=lr,
+            )
+            video_prefix += 'HUCRL'
+        else:
+            dynamics_model = ActiveLearningHUCRLModel(
+                action_space=env.action_space,
+                observation_space=env.observation_space,
+                num_ensemble=num_ensembles,
+                reward_model=reward_model,
+                features=features,
+                pred_diff=pred_diff,
+                beta=beta,
+                seed=seed,
+                use_log_uncertainties=use_log,
+                use_al_uncertainties=use_al,
+                deterministic=deterministic,
+                lr=lr,
+                action_cost=action_cost,
+            )
 
-        video_prefix += 'Optimistic'
+            video_prefix += 'Optimistic'
 
     agent = ModelBasedAgent(
         train_steps=train_steps,
@@ -196,6 +213,7 @@ def main(args):
     """ generate experiment hash and set up redirect of output streams """
     exp_hash = hash_dict(args.__dict__)
     if args.exp_result_folder is not None:
+        import os
         os.makedirs(args.exp_result_folder, exist_ok=True)
         log_file_path = os.path.join(args.exp_result_folder, '%s.log ' % exp_hash)
         logger = Logger(log_file_path)
@@ -250,6 +268,7 @@ def main(args):
         use_log=args.use_log,
         use_al=args.use_al,
         time_limit_eval=args.time_limit_eval,
+        action_cost=args.action_cost,
     )
 
     t_end = time.time()
@@ -324,6 +343,7 @@ if __name__ == '__main__':
     parser.add_argument('--exploration_strategy', type=str, default='Optimistic')
     parser.add_argument('--use_log', default=False, action="store_true")
     parser.add_argument('--use_al', default=False, action="store_true")
+    parser.add_argument('--action_cost', type=float, default=0.0)
     parser.add_argument('--time_limit_eval', type=int, default=200)
 
     # general args

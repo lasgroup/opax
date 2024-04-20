@@ -1,6 +1,8 @@
 .DS_store
 __pycache__/
-mbse.egg-info/
+opax.egg-info/
 wandb/
 
 /results/
+/.idea/
+/build/

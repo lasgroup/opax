@@ -4,14 +4,14 @@
 from argparse_dataclass import ArgumentParser
 from typing import Any
 import yaml
-from mbse.trainer.off_policy.off_policy_trainer import OffPolicyTrainer as Trainer
-from mbse.agents.actor_critic.sac import SACAgent
+from opax.trainer.off_policy.off_policy_trainer import OffPolicyTrainer as Trainer
+from opax.agents.actor_critic.sac import SACAgent
 from dataclasses import dataclass, field
 import wandb
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.rescale_action import RescaleAction
-from mbse.utils.vec_env.env_util import make_vec_env
-from mbse.models.environment_models.pendulum_swing_up import CustomPendulumEnv
+from opax.utils.vec_env.env_util import make_vec_env
+from opax.models.environment_models.pendulum_swing_up import CustomPendulumEnv
 
 
 OptState = Any

@@ -1,8 +1,8 @@
 import numpy as np
 
-from mbse.models.environment_models.pendulum_swing_up import CustomPendulumEnv, PendulumReward, PendulumDynamicsModel
-from mbse.optimizers.icem_trajectory_optimizer import ICemTO, ICEMHyperparams
-from mbse.optimizers.trajax_trajectory_optimizer import TraJaxTO, ILQRHyperparams
+from opax.models.environment_models.pendulum_swing_up import CustomPendulumEnv, PendulumReward, PendulumDynamicsModel
+from opax.optimizers.icem_trajectory_optimizer import ICemTO, ICEMHyperparams
+from opax.optimizers.trajax_trajectory_optimizer import TraJaxTO, ILQRHyperparams
 import time
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.rescale_action import RescaleAction

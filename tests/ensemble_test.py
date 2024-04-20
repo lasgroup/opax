@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mbse.utils.models import ProbabilisticEnsembleModel, FSVGDEnsemble, KDEfWGDEnsemble
+from opax.utils.models import ProbabilisticEnsembleModel, FSVGDEnsemble, KDEfWGDEnsemble
 import seaborn as sns
 sns.reset_defaults()
 sns.set_context(context='talk', font_scale=1.0)

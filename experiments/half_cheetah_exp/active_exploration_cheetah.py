@@ -1,7 +1,7 @@
 from gym.wrappers import RescaleAction, TimeLimit
-from mbse.models.active_learning_model import ActiveLearningHUCRLModel, ActiveLearningPETSModel
-from mbse.agents.model_based.model_based_agent import ModelBasedAgent
-from mbse.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
+from opax.models.active_learning_model import ActiveLearningHUCRLModel, ActiveLearningPETSModel
+from opax.agents.model_based.model_based_agent import ModelBasedAgent
+from opax.trainer.model_based.model_based_trainer import ModelBasedTrainer as Trainer
 import numpy as np
 import time
 import json
@@ -11,9 +11,9 @@ import argparse
 from experiments.util import Logger, hash_dict, NumpyArrayEncoder
 import wandb
 from typing import Optional
-from mbse.models.hucrl_model import HUCRLModel
-from mbse.models.environment_models.halfcheetah_reward_model import HalfCheetahReward
-from mbse.envs.wrappers.action_repeat import ActionRepeat
+from opax.models.hucrl_model import HUCRLModel
+from opax.models.environment_models.halfcheetah_reward_model import HalfCheetahReward
+from opax.envs.wrappers.action_repeat import ActionRepeat
 
 
 def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp_name: str,
@@ -24,17 +24,16 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
                exploration_steps: int, eval_episodes: int, train_freq: int, train_steps: int, num_epochs: int,
                max_train_steps: int, rollout_steps: int, normalize: bool, action_normalize: bool, validate: bool,
                record_test_video: bool, validation_buffer_size: int, validation_batch_size: int,
-               seed: int, exploration_strategy: str, use_log: bool, use_al: bool,
+               seed: int, exploration_strategy: str, use_log: bool, use_al: bool, action_cost: float = 0.0,
                time_limit_eval: Optional[int] = None):
     """ Run experiment for a given method and environment. """
 
     """ Environment """
-    from mbse.utils.vec_env.env_util import make_vec_env
+    from opax.utils.vec_env.env_util import make_vec_env
     # from jax.config import config
     # config.update("jax_log_compiles", 1)
     action_repeat = 4
     lr = 5e-5
-    deterministic = False
     import math
     time_lim = math.ceil(time_limit / action_repeat)
     wrapper_cls = lambda x: RescaleAction(
@@ -43,7 +42,7 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
             max_episode_steps=time_lim),
         min_action=-1,
         max_action=1,
-    )    
+    )
     wrapper_cls_test = wrapper_cls
     if time_limit_eval is not None:
         time_lim_eval = math.ceil(time_limit_eval / action_repeat)
@@ -71,7 +70,7 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
         'reward_model': reward_model_backward,
         'render_mode': 'rgb_array'
     }
-    from mbse.envs.pets_halfcheetah import HalfCheetahEnvDM
+    from opax.envs.pets_halfcheetah import HalfCheetahEnvDM
     env = make_vec_env(env_id=HalfCheetahEnvDM, wrapper_class=wrapper_cls, n_envs=n_envs, seed=seed,
                        env_kwargs=env_kwargs_train)
     test_env_forward = make_vec_env(HalfCheetahEnvDM, wrapper_class=wrapper_cls_test, seed=seed,
@@ -136,6 +135,7 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
             use_al_uncertainties=use_al,
             deterministic=deterministic,
             lr=lr,
+            action_cost=action_cost,
         )
 
         dynamics_model_backward = ActiveLearningPETSModel(
@@ -151,6 +151,7 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
             use_al_uncertainties=use_al,
             deterministic=deterministic,
             lr=lr,
+            action_cost=action_cost,
         )
 
         dynamics_model = [dynamics_model_forward, dynamics_model_backward]
@@ -197,6 +198,7 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
                 use_al_uncertainties=use_al,
                 deterministic=deterministic,
                 lr=lr,
+                action_cost=action_cost,
             )
 
             dynamics_model_backward = ActiveLearningHUCRLModel(
@@ -212,6 +214,7 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
                 use_al_uncertainties=use_al,
                 deterministic=deterministic,
                 lr=lr,
+                action_cost=action_cost,
             )
 
         dynamics_model = [dynamics_model_forward, dynamics_model_backward]
@@ -344,6 +347,7 @@ def main(args):
         use_log=args.use_log,
         use_al=args.use_al,
         time_limit_eval=args.time_limit_eval,
+        action_cost=args.action_cost,
     )
 
     t_end = time.time()
@@ -418,6 +422,7 @@ if __name__ == '__main__':
     parser.add_argument('--exploration_strategy', type=str, default='Optimistic')
     parser.add_argument('--use_log', default=False, action="store_true")
     parser.add_argument('--use_al', default=False, action="store_true")
+    parser.add_argument('--action_cost', type=float, default=0.0)
     parser.add_argument('--time_limit_eval', type=int, default=1000)
 
     # general args

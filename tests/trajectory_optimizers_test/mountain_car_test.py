@@ -1,14 +1,14 @@
 import numpy as np
 
-from mbse.models.environment_models.mountain_car import MountainCarDynamics
-from mbse.envs.custom_mountain_car_env import CustomMountainCar
-from mbse.utils.replay_buffer import ReplayBuffer, Transition
-from mbse.optimizers.sac_based_optimizer import SACOptimizer
+from opax.models.environment_models.mountain_car import MountainCarDynamics
+from opax.envs.custom_mountain_car_env import CustomMountainCar
+from opax.utils.replay_buffer import ReplayBuffer, Transition
+from opax.optimizers.sac_based_optimizer import SACOptimizer
 import time
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.rescale_action import RescaleAction
 import jax
-from mbse.utils.vec_env.env_util import make_vec_env
+from opax.utils.vec_env.env_util import make_vec_env
 
 
 def rollout_random_policy(env, num_steps, rng):

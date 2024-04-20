@@ -1,4 +1,4 @@
-from mbse.optimizers.cross_entropy_optimizer import CrossEntropyOptimizer
+from opax.optimizers.cross_entropy_optimizer import CrossEntropyOptimizer
 import jax.numpy as jnp
 import jax
 EPS = 5e-2

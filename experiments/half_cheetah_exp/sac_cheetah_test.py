@@ -1,7 +1,7 @@
 from gym.wrappers import RescaleAction, TimeLimit
-from mbse.utils.vec_env.env_util import make_vec_env
-from mbse.agents.actor_critic.sac import SACAgent
-from mbse.trainer.off_policy.off_policy_trainer import OffPolicyTrainer as Trainer
+from opax.utils.vec_env.env_util import make_vec_env
+from opax.agents.actor_critic.sac import SACAgent
+from opax.trainer.off_policy.off_policy_trainer import OffPolicyTrainer as Trainer
 import numpy as np
 import time
 import json
@@ -10,8 +10,8 @@ import sys
 import argparse
 from experiments.util import Logger, hash_dict, NumpyArrayEncoder
 import wandb
-from mbse.models.environment_models.halfcheetah_reward_model import HalfCheetahReward
-from mbse.envs.wrappers.action_repeat import ActionRepeat
+from opax.models.environment_models.halfcheetah_reward_model import HalfCheetahReward
+from opax.envs.wrappers.action_repeat import ActionRepeat
 
 
 def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp_name: str,
@@ -41,12 +41,12 @@ def experiment(logs_dir: str, use_wandb: bool, time_limit: int, n_envs: int, exp
             'reward_model': reward_model_forward,
             'render_mode': 'rgb_array'
         }
-        from mbse.envs.pets_halfcheetah import HalfCheetahEnvDM
+        from opax.envs.pets_halfcheetah import HalfCheetahEnvDM
         env = make_vec_env(env_id=HalfCheetahEnvDM, wrapper_class=wrapper_cls, n_envs=n_envs, seed=seed,
                            env_kwargs=env_kwargs_forward)
     else:
         from dm_control.suite.cheetah import run
-        from mbse.envs.dm_control_env import DeepMindBridge
+        from opax.envs.dm_control_env import DeepMindBridge
         env_dm = run(time_limit=float('inf'), environment_kwargs={'flat_observation': True})
         env = lambda *kwargs: DeepMindBridge(env=env_dm)
         env = make_vec_env(env_id=env, wrapper_class=wrapper_cls, n_envs=n_envs, seed=seed)
