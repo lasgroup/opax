@@ -101,7 +101,7 @@ def main(args):
         flags = copy.deepcopy(args.__dict__)
         logs_dir = './'
         [flags.pop(key) for key in ['seed', 'num_hparam_samples', 'num_seeds_per_hparam', 'num_cpus',
-                                    'num_gpus', 'launch_mode', 'env_name', 'user_name', 'long_run', 'num_hours']]
+                                    'num_gpus', 'launch_mode', 'env_name', 'long_run', 'num_hours']]
 
         # randomly sample flags
         for flag in default_configs:

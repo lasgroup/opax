@@ -80,11 +80,70 @@ def _dummy_fun():
     pass
 
 
+""" Command generators """
+
+
+def generate_base_command(module, flags: Optional[Dict[str, Any]] = None, unbuffered: bool = True) -> str:
+    """ Generates the command to execute python module with provided flags
+
+    Args:
+        module: python module / file to run
+        flags: dictonary of flag names and the values to assign to them.
+               assumes that boolean flags are encoded as store_true flags with False as default.
+        unbuffered: whether to invoke an unbuffered python output stream
+
+    Returns: (str) command which can be executed via bash
+
+    """
+
+    """ Module is a python file to execute """
+    interpreter_script = sys.executable
+    base_exp_script = os.path.abspath(module.__file__)
+    if unbuffered:
+        base_cmd = interpreter_script + ' -u ' + base_exp_script
+    else:
+        base_cmd = interpreter_script + ' ' + base_exp_script
+    if flags is not None:
+        assert isinstance(flags, dict), "Flags must be provided as dict"
+        for flag, setting in flags.items():
+            if type(setting) == bool or type(setting) == np.bool_:
+                if setting:
+                    base_cmd += f" --{flag}"
+            else:
+                base_cmd += f" --{flag}={setting}"
+    return base_cmd
+
+
 def generate_run_commands(command_list: List[str], num_cpus: int = 1, num_gpus: int = 0,
                           dry: bool = False, n_hosts: int = 1, mem: int = 6000, long: bool = False,
                           mode: str = 'local', promt: bool = True, num_hours: int = None) -> None:
+    if mode == 'euler':
+        cluster_cmds = []
+        if num_hours is None:
+            num_hours = 23 if long else 3
+        sbatch_cmd = 'sbatch ' + \
+                     f'--time={num_hours}:59:00 ' + \
+                     f'--mem-per-cpu={mem} ' + \
+                     f'-n {num_cpus} '
 
-    if mode == 'local':
+        if num_gpus > 0:
+            sbatch_cmd += f'--gpus={num_gpus} '
+
+        for python_cmd in command_list:
+            cluster_cmds.append(sbatch_cmd + f'--wrap="{python_cmd}"')
+
+        if promt:
+            answer = input(f"About to submit {len(cluster_cmds)} compute jobs to the cluster. Proceed? [yes/no]")
+        else:
+            answer = 'yes'
+        if answer == 'yes':
+            for cmd in cluster_cmds:
+                if dry:
+                    print(cmd)
+                else:
+                    os.system(cmd)
+
+    elif mode == 'local':
         if promt:
             answer = input(f"About to run {len(command_list)} jobs in a loop. Proceed? [yes/no]")
         else:
