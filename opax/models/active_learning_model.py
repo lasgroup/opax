@@ -1,25 +1,29 @@
-from typing import Optional
+from typing import Optional, Callable
+
+import chex
 import jax
 import jax.numpy as jnp
 from opax.utils.utils import sample_normal_dist
 from opax.models.hucrl_model import HUCRLModel
 from opax.models.bayesian_dynamics_model import BayesianDynamicsModel, sample, SamplingType
 from opax.utils.type_aliases import ModelProperties
+from jaxtyping import PyTree
 
 EPS = 1e-6
 
 
 def evaluate_for_exploration(
-        pred_fn,
-        parameters,
-        obs,
-        action,
-        rng,
+        pred_fn: Callable,
+        parameters: PyTree,
+        obs: chex.Array,
+        action: chex.Array,
+        rng: jax.random.PRNGKeyArray,
         model_props: ModelProperties = ModelProperties(),
         sampling_idx: Optional[int] = None,
         use_log_uncertainties: bool = False,
         use_al_uncertainties: bool = False,
 ):
+    """Predicts next state and calculates opax reward"""
     model_rng = None
     if rng is not None:
         rng, model_rng = jax.random.split(rng, 2)
@@ -48,8 +52,8 @@ def evaluate_for_exploration(
 
 class ActiveLearningPETSModel(BayesianDynamicsModel):
     def __init__(self,
-                 use_log_uncertainties=False,
-                 use_al_uncertainties=False,
+                 use_log_uncertainties: bool = True,
+                 use_al_uncertainties: bool = True,
                  action_cost: float = 0.0,
                  *args,
                  **kwargs
@@ -121,6 +125,7 @@ class ActiveLearningPETSModel(BayesianDynamicsModel):
                 model_props: ModelProperties = ModelProperties(),
                 sampling_idx: int = 0,
         ):
+            """Predict next state using only the mean model."""
             return self._predict(
                 predict_fn=self.model._predict,
                 parameters=parameters,
@@ -144,6 +149,7 @@ class ActiveLearningPETSModel(BayesianDynamicsModel):
                 model_props: ModelProperties = ModelProperties(),
                 sampling_idx: Optional[int] = None,
         ):
+            """Evaluate using the mean model."""
             return self._evaluate(
                 pred_fn=self.predict_with_mean,
                 reward_fn=self.reward_model.predict,
@@ -160,17 +166,18 @@ class ActiveLearningPETSModel(BayesianDynamicsModel):
 
     @staticmethod
     def _predict_with_uncertainty(
-            predict_fn,
-            parameters,
-            obs,
-            action,
-            rng,
-            sampling_type,
-            num_ensembles,
-            sampling_idx,
+            predict_fn: Callable,
+            parameters: PyTree,
+            obs: chex.Array,
+            action: chex.Array,
+            rng: jax.random.PRNGKeyArray,
+            sampling_type: SamplingType,
+            num_ensembles: int,
+            sampling_idx: int,
             model_props: ModelProperties = ModelProperties(),
             pred_diff: bool = 1,
     ):
+        """Predict next state, epistemic and aleatoric uncertainty."""
         alpha = model_props.alpha
         bias_obs = model_props.bias_obs
         bias_act = model_props.bias_act
@@ -236,8 +243,8 @@ class ActiveLearningPETSModel(BayesianDynamicsModel):
 class ActiveLearningHUCRLModel(HUCRLModel):
 
     def __init__(self,
-                 use_log_uncertainties=False,
-                 use_al_uncertainties=False,
+                 use_log_uncertainties: bool = True,
+                 use_al_uncertainties: bool = True,
                  action_cost: float = 0.0,
                  *args,
                  **kwargs
@@ -298,15 +305,17 @@ class ActiveLearningHUCRLModel(HUCRLModel):
             reward = reward - action_cost
             return next_obs, reward
 
+        # evaluate for exploration uses optimistic model
         self.evaluate_for_exploration = jax.jit(_evaluate_for_exploration)
 
-        def predict_without_optimism(parameters,
-                                     obs,
-                                     action,
-                                     rng,
-                                     model_props: ModelProperties = ModelProperties(),
-                                     sampling_idx: Optional[int] = None,
-                                     ):
+        def predict_with_mean(parameters,
+                              obs,
+                              action,
+                              rng,
+                              model_props: ModelProperties = ModelProperties(),
+                              sampling_idx: Optional[int] = None,
+                              ):
+            """Predict next state using the mean model only."""
             return self._predict(
                 predict_fn=self.model._predict,
                 parameters=parameters,
@@ -322,9 +331,10 @@ class ActiveLearningHUCRLModel(HUCRLModel):
                 sampling_idx=sampling_idx,
             )
 
-        self.predict_without_optimism = jax.jit(predict_without_optimism)
-        self.predict = self.predict_without_optimism
+        self.predict_with_mean = jax.jit(predict_with_mean)
+        self.predict = self.predict_with_mean
 
+        # evaluation is only done with the mean
         def evaluate(
                 parameters,
                 obs,
@@ -334,7 +344,7 @@ class ActiveLearningHUCRLModel(HUCRLModel):
                 sampling_idx: Optional[int] = None,
         ):
             return self._evaluate(
-                pred_fn=self.predict_without_optimism,
+                pred_fn=self.predict_with_mean,
                 reward_fn=self.reward_model.predict,
                 act_dim=self.act_dim,
                 parameters=parameters,
@@ -360,6 +370,7 @@ class ActiveLearningHUCRLModel(HUCRLModel):
             pred_diff: bool = 1,
             sampling_idx: Optional[int] = None,
     ):
+        """Predict next state (with optimism), epistemic and aleatoric std."""
         alpha = model_props.alpha
         bias_obs = model_props.bias_obs
         bias_act = model_props.bias_act

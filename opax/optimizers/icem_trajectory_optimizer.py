@@ -1,4 +1,5 @@
 """Generate colored noise. Taken from: https://github.com/felixpatzelt/colorednoise/blob/master/colorednoise.py"""
+import chex
 import numpy as np
 from jax.numpy import sqrt, newaxis
 from jax.numpy.fft import irfft, rfftfreq
@@ -11,6 +12,7 @@ from numpy import integer
 from opax.optimizers.dummy_policy_optimizer import DummyPolicyOptimizer, BestSequences
 from opax.utils.type_aliases import ModelProperties
 from opax.utils.utils import sample_trajectories
+from jaxtyping import PyTree
 
 
 @partial(jax.jit, static_argnums=(0, 1, 3))
@@ -148,7 +150,7 @@ def powerlaw_psd_gaussian(exponent: float, size: int, rng: jax.random.PRNGKey, f
 """Generate colored noise."""
 
 
-def powerlaw_psd_gaussian_numpy(exponent, size, fmin=0, random_state=None):
+def powerlaw_psd_gaussian_numpy(exponent: float, size: int, fmin: float = 0, random_state=None):
     """Gaussian (1/f)**beta noise.
     Based on the algorithm in:
     Timmer, J. and Koenig, M.:
@@ -340,6 +342,7 @@ class ICemTO(DummyPolicyOptimizer):
         self._init_fn()
 
     def _init_fn(self):
+        """Initialize optimization functions for each dynamics model."""
         self.optimize_for_eval_fns = []
         for i in range(len(self.dynamics_model_list)):
             self.optimize_for_eval_fns.append(partial(
@@ -358,7 +361,7 @@ class ICemTO(DummyPolicyOptimizer):
             key: Optional = None,
             optimizer_key: Optional = None,
             sampling_idx: Optional[Union[jnp.ndarray, int]] = None,
-    ):
+    ) -> [chex.Array, chex.Array]:
         initial_state = jnp.repeat(jnp.expand_dims(initial_state, 0), self.n_particles, 0)
         eval_func = lambda seq, x, k: sample_trajectories(
             evaluate_fn=evaluate_fn,
@@ -410,7 +413,7 @@ class ICemTO(DummyPolicyOptimizer):
             action_samples = action_samples.reshape((-1,) + self.opt_dim)
             action_samples = jnp.concatenate([action_samples, prev_elites], axis=0)
             values = jax.vmap(sum_rewards)(action_samples)
-            best_elite_idx = np.argsort(values, axis=0).squeeze()[-self.opt_params.num_elites:]
+            best_elite_idx = jnp.argsort(values, axis=0).squeeze()[-self.opt_params.num_elites:]
             elites = action_samples[best_elite_idx]
             elite_values = values[best_elite_idx]
             elite_mean = jnp.mean(elites, axis=0)
@@ -451,11 +454,11 @@ class ICemTO(DummyPolicyOptimizer):
 
     def _get_action_sequence(
             self,
-            model_index,
-            dynamics_params,
-            obs,
-            key=None,
-            optimizer_key=None,
+            model_index: int,
+            dynamics_params: PyTree,
+            obs: chex.Array,
+            key: jax.random.PRNGKeyArray = None,
+            optimizer_key: jax.random.PRNGKeyArray = None,
             model_props: ModelProperties = ModelProperties(),
             initial_actions: Optional[jax.Array] = None,
             sampling_idx: Optional[Union[jnp.ndarray, int]] = None,

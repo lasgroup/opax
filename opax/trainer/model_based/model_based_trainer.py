@@ -19,6 +19,16 @@ class ModelBasedTrainer(DummyTrainer):
                  *args,
                  **kwargs,
                  ):
+        """
+
+        :param agent: ModelBasedAgent, RL Agent
+        :param agent_name: str, name of agent
+        :param validation_buffer_size: int, size of validation buffer
+        :param validation_batch_size: int, batch size for validation
+        :param uniform_exploration: bool, if random/uniform exploration is done
+        :param args:
+        :param kwargs:
+        """
 
         super(ModelBasedTrainer, self).__init__(agent=agent, agent_name=agent_name, *args, **kwargs)
         assert isinstance(self.agent, ModelBasedAgent), "Only Model based agents are allowed"
@@ -28,6 +38,11 @@ class ModelBasedTrainer(DummyTrainer):
         self.uniform_exploration = uniform_exploration
 
     def collect_validation_data(self, validation_buffer_size: int = 0):
+        """
+        Collect data for validation if validation_buffer_size > 0
+        :param validation_buffer_size: int
+        :return:
+        """
         if validation_buffer_size > 0:
             self.validation_buffer = ReplayBuffer(
                 obs_shape=self.buffer.obs_shape,
@@ -68,7 +83,12 @@ class ModelBasedTrainer(DummyTrainer):
             #                                  )
             self.validation_buffer.add(transitions)
 
-    def validate_model(self, rng):
+    def validate_model(self, rng: jax.random.PRNGKeyArray) -> dict:
+        """
+        Validates learned dynamics model
+        :param rng: random key for validation
+        :return model_log: dict, logs for model validation
+        """
         model_log = {}
         if self.validation_buffer is not None:
             val_tran = self.validation_buffer.sample(
@@ -105,6 +125,9 @@ class ModelBasedTrainer(DummyTrainer):
         return model_log
 
     def train(self):
+        """
+        Train function for model based agent
+        """
         if self.use_wandb:
             wandb.define_metric('env_steps')
             wandb.define_metric('learning_step')
@@ -118,7 +141,6 @@ class ModelBasedTrainer(DummyTrainer):
             scale_obs=self.buffer.state_normalizer.std,
             scale_act=self.buffer.action_normalizer.std,
             scale_out=self.buffer.next_state_normalizer.std,
-
         )
         curr_eval, eval_val_rng = jax.random.split(curr_eval, 2)
         model_log = self.validate_model(eval_val_rng)
@@ -136,8 +158,10 @@ class ModelBasedTrainer(DummyTrainer):
             reward_log.update(model_log)
             wandb.log(reward_log)
 
+        # returns policy used for random exploration
         exploration_policy = lambda x, y: np.concatenate([self.env.action_space.sample().reshape(1, -1)
                                                           for s in range(self.num_envs)], axis=0)
+        # collect data with the random policy
         policy = exploration_policy
         self.rng, explore_rng = random.split(self.rng, 2)
         if self.exploration_steps > 0:
@@ -154,9 +178,11 @@ class ModelBasedTrainer(DummyTrainer):
             (1,),
             minval=0,
             maxval=int(learning_steps * self.rollout_steps)).item()
+        # reset env before training starts
         obs, _ = self.env.reset(seed=reset_seed)
         step = 0
         for step in tqdm(range(learning_steps)):
+            # collect rollouts with policy
             actor_rng, train_rng = random.split(rng_keys[step], 2)
             policy = self.agent.act_in_train if not self.uniform_exploration else exploration_policy
             actor_rng, val_rng = random.split(actor_rng, 2)
@@ -178,6 +204,7 @@ class ModelBasedTrainer(DummyTrainer):
                 'env_steps': step * self.rollout_steps * self.num_envs,
                 'learning_step': step,
             }
+            # update agent
             if step % self.train_freq == 0 and (self.buffer.size >= self.agent.batch_size or self.agent.is_gp):
                 train_rng, agent_rng = random.split(train_rng, 2)
                 total_train_steps = self.agent.train_step(
@@ -220,5 +247,5 @@ class ModelBasedTrainer(DummyTrainer):
         self.save_agent(step, agent_name="final_agent")
 
     @property
-    def num_reward_models(self):
+    def num_reward_models(self) -> int:
         return self.agent.num_dynamics_models

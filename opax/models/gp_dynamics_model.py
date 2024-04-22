@@ -1,4 +1,7 @@
-from typing import Optional, NamedTuple
+from typing import Optional, NamedTuple, Callable
+
+import chex
+
 from opax.models.dynamics_model import DynamicsModel, ModelSummary
 from opax.utils.type_aliases import ModelProperties
 import gym
@@ -9,7 +12,7 @@ from opax.utils.models import GPModel, GPModelParameters
 from opax.utils.utils import sample_normal_dist
 import jax
 from opax.utils.replay_buffer import Transition, ReplayBuffer
-
+from jaxtyping import PyTree
 
 EPS = 1e-6
 
@@ -223,47 +226,20 @@ class GPDynamicsModel(DynamicsModel):
             self.evaluate_for_exploration = jax.jit(evaluate_for_exploration)
 
     @staticmethod
-    def _predict(
-            predict_with_uncertainty,
-            parameters,
-            obs,
-            action,
-            rng,
-            model_props: ModelProperties = ModelProperties(),
-            *args,
-            **kwargs,
-    ):
-        next_obs, _ = predict_with_uncertainty(
-            parameters=parameters,
-            obs=obs,
-            action=action,
-            rng=rng,
-            model_props=model_props,
-        )
-        return next_obs
-
-    @staticmethod
-    def _predict_with_uncertainty(predict_fn,
-                                  parameters,
-                                  act_dim,
-                                  obs,
-                                  action,
-                                  rng,
-                                  sampling_type,
+    def _predict_with_uncertainty(predict_fn: Callable,
+                                  parameters: PyTree,
+                                  act_dim: int,
+                                  obs: chex.Array,
+                                  action: chex.Array,
+                                  rng: jax.random.PRNGKeyArray,
+                                  sampling_type: GPSamplingType,
                                   model_props: ModelProperties = ModelProperties(),
                                   pred_diff: bool = 1,
                                   beta: float = 1.0,
                                   *args,
                                   **kwargs,
                                   ):
-        """
-                Predict using learning model
-                :param obs: observation, shape (batch, dim_state)
-                :param action: action, shape (batch, dim_action)
-                :param rng:
-                :return:
-
-                """
+        """Predict next state and epistemic std using GP model. Optimistic, mean or DS prediction."""
         alpha = model_props.alpha
         bias_obs = model_props.bias_obs
         bias_act = model_props.bias_act
@@ -295,18 +271,40 @@ class GPDynamicsModel(DynamicsModel):
         return next_obs, next_obs_std * scale_out
 
     @staticmethod
-    def _evaluate(
-            pred_fn,
-            reward_fn,
-            act_dim,
-            parameters,
-            obs,
-            action,
-            rng,
+    def _predict(
+            predict_with_uncertainty: Callable,
+            parameters: PyTree,
+            obs: chex.Array,
+            action: chex.Array,
+            rng: jax.random.PRNGKeyArray,
             model_props: ModelProperties = ModelProperties(),
             *args,
             **kwargs,
     ):
+        """Predict next state only using the GP model."""
+        next_obs, _ = predict_with_uncertainty(
+            parameters=parameters,
+            obs=obs,
+            action=action,
+            rng=rng,
+            model_props=model_props,
+        )
+        return next_obs
+
+    @staticmethod
+    def _evaluate(
+            pred_fn: Callable,
+            reward_fn: Callable,
+            act_dim: int,
+            parameters: PyTree,
+            obs: chex.Array,
+            action: chex.Array,
+            rng: jax.random.PRNGKeyArray,
+            model_props: ModelProperties = ModelProperties(),
+            *args,
+            **kwargs,
+    ) -> [chex.Array, chex.Array]:
+        """Predict the next state with true reward."""
         model_rng = None
         reward_rng = None
         if rng is not None:
@@ -325,16 +323,17 @@ class GPDynamicsModel(DynamicsModel):
 
     @staticmethod
     def _evaluate_for_active_exploration(
-            pred_with_uncertainty,
-            parameters,
-            obs,
-            action,
-            rng,
+            pred_with_uncertainty: Callable,
+            parameters: PyTree,
+            obs: chex.Array,
+            action: chex.Array,
+            rng: jax.random.PRNGKeyArray,
             model_props: ModelProperties = ModelProperties(),
             use_log_uncertainties: bool = True,
             *args,
             **kwargs
-    ):
+    ) -> [chex.Array, chex.Array]:
+        """Predicts the next state with intrinsic reward"""
         model_rng = None
         if rng is not None:
             rng, model_rng = jax.random.split(rng, 2)
@@ -353,19 +352,19 @@ class GPDynamicsModel(DynamicsModel):
         return next_obs, reward
 
     @property
-    def model_params(self):
+    def model_params(self) -> PyTree:
         return self.model.parameter_state
 
     @property
-    def model_opt_state(self):
+    def model_opt_state(self) -> PyTree:
         return jnp.empty(1)
 
     @property
-    def init_model_params(self):
+    def init_model_params(self) -> PyTree:
         return self.model.init_parameter_state
 
     @property
-    def init_model_opt_state(self):
+    def init_model_opt_state(self) -> PyTree:
         return jnp.empty(1)
 
     def _train_step(
@@ -379,7 +378,7 @@ class GPDynamicsModel(DynamicsModel):
             num_steps: int = 1000,
             *args,
             **kwargs,
-    ):
+    ) -> [PyTree, PyTree, chex.Array, ModelSummary]:
         x = jnp.concatenate([tran.obs, tran.action], axis=-1)
         y = tran.next_obs
         trained_state = self.model._train(
@@ -397,7 +396,7 @@ class GPDynamicsModel(DynamicsModel):
         summary = ModelSummary()
         return trained_params, jnp.empty(1), jnp.ones(self.obs_dim), summary
 
-    def update_model(self, model_params, model_opt_state, alpha):
+    def update_model(self, model_params: PyTree, model_opt_state: PyTree, alpha: chex.Array):
         super().update_model(model_params, model_opt_state, alpha)
         self.model.parameter_state = GPModelParameters(
             gp_parameter_state=model_params.gp_parameter_state,
@@ -410,9 +409,3 @@ class GPDynamicsModel(DynamicsModel):
         x = jnp.concatenate([tran.obs, tran.action], axis=-1)
         y = tran.next_obs
         self.model.update_dataset(x, y)
-
-
-
-
-
-

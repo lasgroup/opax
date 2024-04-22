@@ -1,3 +1,6 @@
+import chex
+import jax.random
+
 from opax.utils.replay_buffer import Transition
 from typing import Optional, Union
 from flax import struct
@@ -5,6 +8,7 @@ import jax.numpy as jnp
 from opax.utils.utils import convert_to_jax
 from opax.utils.type_aliases import ModelProperties
 from opax.utils.replay_buffer import ReplayBuffer
+from jaxtyping import PyTree
 
 
 @struct.dataclass
@@ -40,36 +44,39 @@ class DynamicsModel(object):
                  ):
         self.model_props = model_props
         self.pred_diff = pred_diff
+        # by default evaluate for exploration is the same as the evaluate function
+        # this function only changes when doing active exploration where the opax objective is used.
+        # evaluate uses the true reward function
         self.evaluate_for_exploration = self.evaluate
         pass
 
     def _init_fn(self):
         pass
 
-    def predict(self, obs, action, rng=None):
+    def predict(self, obs: chex.Array, action: chex.Array, rng: Optional[jax.random.PRNGKeyArray] = None):
         pass
 
     def predict_raw(self,
-                    parameters,
+                    parameters: PyTree,
                     tran: Transition,
                     model_props: ModelProperties = ModelProperties()
                     ):
         pass
 
     def evaluate(self,
-                 parameters,
-                 obs,
-                 action,
-                 rng,
-                 sampling_idx=None,
+                 parameters: PyTree,
+                 obs: chex.Array,
+                 action: chex.Array,
+                 rng: jax.random.PRNGKeyArray,
+                 sampling_idx: Optional[chex.Array] = None,
                  model_props: ModelProperties = ModelProperties()
                  ):
         pass
 
     def _train_step(self,
                     tran: Transition,
-                    model_params=None,
-                    model_opt_state=None,
+                    model_params: PyTree = None,
+                    model_opt_state: PyTree = None,
                     val: Optional[Transition] = None,
                     *args,
                     **kwargs):
@@ -91,7 +98,8 @@ class DynamicsModel(object):
     def init_model_opt_state(self):
         return None
 
-    def update_model(self, model_params, model_opt_state, alpha):
+    def update_model(self, model_params: PyTree, model_opt_state: PyTree, alpha: Union[float, chex.Array]):
+        # update model params and properties
         alpha = convert_to_jax(alpha)
         bias_obs = self.model_props.bias_obs
         bias_act = self.model_props.bias_act
@@ -118,6 +126,7 @@ class DynamicsModel(object):
                        scale_act: Union[jnp.ndarray, float] = 1.0,
                        scale_out: Union[jnp.ndarray, float] = 1.0,
                        ):
+        # update transformations for the model
         alpha = self.model_props.alpha
         bias_obs = convert_to_jax(bias_obs)
         bias_act = convert_to_jax(bias_act)
@@ -136,4 +145,5 @@ class DynamicsModel(object):
         )
 
     def update_model_posterior(self, buffer: ReplayBuffer):
+        # only used when dealing with GPs
         return

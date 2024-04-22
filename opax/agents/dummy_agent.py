@@ -1,7 +1,9 @@
 import jax.numpy as jnp
+import jax.random
+
 from opax.utils.replay_buffer import ReplayBuffer
 import numpy as np
-from typing import Callable
+from typing import Optional
 
 
 class DummyAgent(object):
@@ -17,7 +19,7 @@ class DummyAgent(object):
     def act(self, obs: np.ndarray, rng=None, eval: bool = False, eval_idx: int = 0):
         return np.asarray(self.act_in_jax(jnp.asarray(obs), rng, eval=eval, eval_idx=eval_idx))
 
-    def act_in_jax(self, obs: jnp.ndarray, rng=None, eval: bool = False, eval_idx: int = 0):
+    def act_in_jax(self, obs: jnp.ndarray, rng: Optional[jax.random.PRNGKey] = None, eval: bool = False, eval_idx: int = 0):
         NotImplementedError
 
     def train_step(self,

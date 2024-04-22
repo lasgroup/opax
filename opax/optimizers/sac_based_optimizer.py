@@ -92,6 +92,30 @@ class SACOptimizer(DummyPolicyOptimizer):
                  *args,
                  **kwargs,
                  ):
+        """
+
+        :param action_dim:
+        :param dynamics_model_list:
+        :param horizon:
+        :param n_particles:
+        :param transitions_per_update: Number of initial states to sample per sac update
+        :param simulated_buffer_size: max replay buffer size of simulated buffer
+        :param train_steps_per_model_update: Number of total trainiting steps per model update.
+        :param sim_transitions_ratio:
+        :param normalize:
+        :param action_normalize:
+        :param sac_kwargs: sac kwargs -> stores sac training parameters, e.g., number of gradient steps per update.
+        :param reset_actor_params: boolean to indicate if actor should reset after every model update.
+        :param reset_optimizer: boolean to indicate if optimizer should reset after every model update.
+        :param reset_buffer: boolean to indicate if buffer should reset after every model update.
+        :param target_soft_update_tau: float -> soft update for tracking policy params over multiple model updates.
+        :param evaluation_frequency:
+        :param evaluation_samples:
+        :param evaluation_horizon:
+        :param use_best_trained_policy:
+        :param args:
+        :param kwargs:
+        """
         super().__init__(*args, **kwargs)
         assert isinstance(dynamics_model_list, list)
         self.dynamics_model_list = dynamics_model_list
@@ -173,27 +197,19 @@ class SACOptimizer(DummyPolicyOptimizer):
     def get_action(self, obs: jax.Array, rng):
         return self.get_action_for_eval(obs=obs, rng=rng, agent_idx=0)
 
-    def get_action_for_exploration(self, obs: jax.Array, rng, *args, **kwargs):
+    def get_action_for_exploration(self, obs: jax.Array, rng: jax.random.PRNGKeyArray, *args, **kwargs):
+        policy = self.agent_list[0].get_action
         if self.active_exploration_agent:
-            policy = self.agent_list[0].get_action
             agent_state = get_idx(self.optimizer_state, -1)
-            normalized_obs = (obs - agent_state.policy_props.policy_bias_obs) / (
-                    agent_state.policy_props.policy_scale_obs + EPS)
-            action = policy(
-                actor_params=agent_state.agent_train_state.actor_params,
-                obs=normalized_obs,
-                rng=rng,
-            )
         else:
-            policy = self.agent_list[0].get_action
             agent_state = get_idx(self.optimizer_state, 0)
-            normalized_obs = (obs - agent_state.policy_props.policy_bias_obs) / (
-                    agent_state.policy_props.policy_scale_obs + EPS)
-            action = policy(
-                actor_params=agent_state.agent_train_state.actor_params,
-                obs=normalized_obs,
-                rng=rng,
-            )
+        normalized_obs = (obs - agent_state.policy_props.policy_bias_obs) / (
+                agent_state.policy_props.policy_scale_obs + EPS)
+        action = policy(
+            actor_params=agent_state.agent_train_state.actor_params,
+            obs=normalized_obs,
+            rng=rng,
+        )
         return action
 
     def _init_fn(self):
@@ -271,6 +287,9 @@ class SACOptimizer(DummyPolicyOptimizer):
             #                     sim_buffer_state.state_normalizer_state.mean
             #    obs = jnp.concatenate([true_obs_sample, sim_obs_sample], axis=0)
             # else:
+
+            # sample transitions_per_update different initial states from the buffer
+            # and simulate them for a fixed horizon.
             ind = jax.random.randint(buffer_rng, (self.transitions_per_update,), 0, obs_size)
             obs = jnp.take(true_obs, ind, axis=0, mode='wrap')
 
@@ -303,6 +322,7 @@ class SACOptimizer(DummyPolicyOptimizer):
                                                 )
             sim_transitions = sim_transitions.reshape(train_steps, batch_size)
             train_rng, key = jax.random.split(key, 2)
+            # sample transitions from the sim transitions buffer and perform sac updates.
             agent_train_state, summary = self.train_step(
                 train_rng=train_rng,
                 train_state=opt_state.agent_train_state,
@@ -371,7 +391,7 @@ class SACOptimizer(DummyPolicyOptimizer):
         return carry[0], trained_state, outs[0], outs[1]
 
     def train(self,
-              rng,
+              rng: jax.random.PRNGKeyArray,
               buffer: ReplayBuffer,
               dynamics_params: Optional = None,
               model_props: ModelProperties = ModelProperties(),

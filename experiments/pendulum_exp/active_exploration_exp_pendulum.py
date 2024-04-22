@@ -364,7 +364,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_envs', type=int, default=5)
 
     # optimizer experiment args
-    parser.add_argument('--optimizer_type', type=str, default='SacOpt')
+    parser.add_argument('--optimizer_type', type=str, default='iCemTO')
     parser.add_argument('--num_samples', type=int, default=500)
     parser.add_argument('--num_elites', type=int, default=50)
     parser.add_argument('--num_steps', type=int, default=10)

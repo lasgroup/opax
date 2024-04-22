@@ -22,7 +22,8 @@ required = [
     'pandas',
     'jaxutils==0.0.8',
     'dm_control==1.0.10',
-    'trajax @ git+ssh://git@github.com/lenarttreven/trajax.git'
+    'trajax @ git+ssh://git@github.com/lenarttreven/trajax.git',
+    'jaxtyping~=0.2.28'
 ]
 
 extras = {'dev': ['seaborn', 'control>=0.9.2']}

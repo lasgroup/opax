@@ -1,47 +1,26 @@
 import functools
 
+import chex
 import jax.numpy as jnp
 import jax
 from flax import struct
 import numpy as np
-from typing import Union
+from typing import Union, Tuple, Optional
 from copy import deepcopy
-
 
 EPS = 1e-8
 
 
-def identity_transform(obs, action=None, next_state=None):
+def identity_transform(obs: chex.Array, action: Optional[chex.Array] = None, next_state: Optional[chex.Array] = None) \
+        -> [chex.Array, Optional[chex.Array], Optional[chex.Array]]:
     return obs, action, next_state
 
 
-def inverse_identitiy_transform(transformed_obs, transformed_action=None, transformed_next_state=None):
+def inverse_identitiy_transform(transformed_obs: chex.Array, transformed_action: Optional[chex.Array] = None,
+                                transformed_next_state: Optional[chex.Array] = None) -> [chex.Array,
+                                                                                         Optional[chex.Array],
+                                                                                         Optional[chex.Array]]:
     return identity_transform(transformed_obs, transformed_action, transformed_next_state)
-
-
-def merge_transitions(tran_a, tran_b, axis=0):
-    obs = jnp.concatenate([tran_a.obs, tran_b.obs], axis=axis)
-    action = jnp.concatenate([tran_a.action, tran_b.action], axis=axis)
-    next_obs = jnp.concatenate([tran_a.next_obs, tran_b.next_obs], axis=axis)
-    reward = jnp.concatenate([tran_a.reward, tran_b.reward], axis=axis)
-    done = jnp.concatenate([tran_a.done, tran_b.done], axis=axis)
-    return Transition(
-        obs,
-        action,
-        next_obs,
-        reward,
-        done,
-    )
-
-
-def transition_to_jax(tran):
-    return Transition(
-        obs=jnp.asarray(tran.obs),
-        action=jnp.asarray(tran.action),
-        next_obs=jnp.asarray(tran.next_obs),
-        reward=jnp.asarray(tran.reward),
-        done=jnp.asarray(tran.done),
-    )
 
 
 @struct.dataclass
@@ -84,13 +63,38 @@ class Transition:
         return self.obs, self.action, self.next_obs, self.reward, self.done
 
 
+def merge_transitions(tran_a: Transition, tran_b: Transition, axis=0):
+    obs = jnp.concatenate([tran_a.obs, tran_b.obs], axis=axis)
+    action = jnp.concatenate([tran_a.action, tran_b.action], axis=axis)
+    next_obs = jnp.concatenate([tran_a.next_obs, tran_b.next_obs], axis=axis)
+    reward = jnp.concatenate([tran_a.reward, tran_b.reward], axis=axis)
+    done = jnp.concatenate([tran_a.done, tran_b.done], axis=axis)
+    return Transition(
+        obs,
+        action,
+        next_obs,
+        reward,
+        done,
+    )
+
+
+def transition_to_jax(tran: Transition):
+    return Transition(
+        obs=jnp.asarray(tran.obs),
+        action=jnp.asarray(tran.action),
+        next_obs=jnp.asarray(tran.next_obs),
+        reward=jnp.asarray(tran.reward),
+        done=jnp.asarray(tran.done),
+    )
+
+
 class Normalizer(object):
-    def __init__(self, input_shape):
+    def __init__(self, input_shape: Tuple):
         self.mean = np.zeros(*input_shape)
         self.std = np.ones(*input_shape)
         self.size = 0
 
-    def update(self, x):
+    def update(self, x: chex.Array):
         new_size = x.shape[0]
         total_size = new_size + self.size
         new_mean = (self.mean * self.size + np.sum(x, axis=0)) / total_size
@@ -108,21 +112,21 @@ class Normalizer(object):
         self.std = np.maximum(new_std, np.ones_like(new_std) * EPS)
         self.size = total_size
 
-    def normalize(self, x):
+    def normalize(self, x: chex.Array):
         return (x - self.mean) / self.std
 
-    def inverse(self, x):
+    def inverse(self, x: chex.Array):
         return x * self.std + self.mean
 
 
 class ReplayBuffer(object):
     def __init__(self,
-                 obs_shape,
-                 action_shape,
+                 obs_shape: Tuple,
+                 action_shape: Tuple,
                  max_size: int = int(1e6),
-                 normalize=False,
-                 action_normalize=False,
-                 learn_deltas=False
+                 normalize: bool = False,
+                 action_normalize: bool = False,
+                 learn_deltas: bool = False
                  ):
         self.max_size = max_size
         self.current_ptr = 0
@@ -138,6 +142,7 @@ class ReplayBuffer(object):
         self.reset()
 
     def add(self, transition: Transition):
+        """Add new transition to the buffer."""
         size = transition.shape[0]
         start = self.current_ptr
         end = self.current_ptr + size
@@ -173,7 +178,7 @@ class ReplayBuffer(object):
             self.reward_normalizer.update(self.reward[idx_range])
         self.current_ptr = end % self.max_size
 
-    def sample(self, rng, batch_size: int = 256):
+    def sample(self, rng: jax.random.PRNGKeyArray, batch_size: int = 256) -> Transition:
         ind = jax.random.randint(rng, (batch_size,), 0, self.size)
         obs = jnp.asarray(self.obs)[ind]
         next_state = jnp.asarray(self.next_obs)[ind]
@@ -190,7 +195,8 @@ class ReplayBuffer(object):
             jnp.asarray(self.done)[ind],
         )
 
-    def get_full_normalized_data(self):
+    def get_full_normalized_data(self) -> Transition:
+        """Return all (normalized) data"""
         obs = jnp.asarray(self.obs[:self.size])
         next_state = jnp.asarray(self.next_obs[:self.size])
         if self.learn_deltas:
@@ -207,6 +213,7 @@ class ReplayBuffer(object):
         )
 
     def reset(self):
+        """Empty and reset replay buffer."""
         self.current_ptr = 0
         self.size = 0
         self.obs = np.zeros((self.max_size, *self.obs_shape))
@@ -229,7 +236,7 @@ class NormalizerState:
 
 
 class JaxNormalizer:
-    def __init__(self, input_shape):
+    def __init__(self, input_shape: Tuple):
         self.input_shape = input_shape
 
     def initialize_normalizer_state(self):
@@ -244,7 +251,7 @@ class JaxNormalizer:
 
     @staticmethod
     @jax.jit
-    def update(x: jax.Array, state: NormalizerState):
+    def update(x: jax.Array, state: NormalizerState) -> NormalizerState:
         new_size = x.shape[0]
         total_size = new_size + state.size
         new_mean = (state.mean * state.size + jnp.sum(x, axis=0)) / total_size
@@ -261,12 +268,12 @@ class JaxNormalizer:
 
     @staticmethod
     @jax.jit
-    def normalize(x, state):
+    def normalize(x: chex.Array, state: NormalizerState):
         return (x - state.mean) / state.std
 
     @staticmethod
     @jax.jit
-    def inverse(x, state):
+    def inverse(x: chex.Array, state: NormalizerState):
         return x * state.std + state.mean
 
 
@@ -283,12 +290,12 @@ class BufferState:
 
 class JaxReplayBuffer(object):
     def __init__(self,
-                 obs_shape,
-                 action_shape,
+                 obs_shape: Tuple,
+                 action_shape: Tuple,
                  max_size: int = int(1e6),
-                 normalize=False,
-                 action_normalize=False,
-                 learn_deltas=False,
+                 normalize: bool = False,
+                 action_normalize: bool = False,
+                 learn_deltas: bool = False,
                  *args,
                  **kwargs,
                  ):
@@ -304,7 +311,7 @@ class JaxReplayBuffer(object):
         self.action_normalize = action_normalize
         _ = self.reset()
 
-    def initialize_buffer_state(self):
+    def initialize_buffer_state(self) -> BufferState:
         current_ptr = 0
         size = 0
         obs = jnp.zeros((self.max_size, *self.obs_shape))
@@ -331,7 +338,8 @@ class JaxReplayBuffer(object):
         )
 
     @functools.partial(jax.jit, static_argnums=0)
-    def add(self, transition: Transition, state: BufferState):
+    def add(self, transition: Transition, state: BufferState) -> BufferState:
+        """Add new transition to the buffer"""
         size = transition.shape[0]
         start = state.current_ptr
         roll = jnp.minimum(0, self.max_size - start - size)
@@ -370,7 +378,7 @@ class JaxReplayBuffer(object):
         )
 
     @functools.partial(jax.jit, static_argnums=(0, 3))
-    def sample(self, rng, state: BufferState, batch_size: int = 256):
+    def sample(self, rng: jax.random.PRNGKeyArray, state: BufferState, batch_size: int = 256) -> Transition:
         ind = jax.random.randint(rng, (batch_size,), 0, state.size)
         sampled_tran = jax.tree_util.tree_map(lambda x: jnp.take(x, ind, axis=0, mode='wrap'), state.tran)
         if self.learn_deltas:
@@ -403,7 +411,7 @@ class JaxReplayBuffer(object):
     #         self.done[:self.size],
     #     )
 
-    def reset(self):
+    def reset(self) -> BufferState:
         self.state_normalizer = JaxNormalizer(self.obs_shape)
         self.action_normalizer = JaxNormalizer(self.action_shape)
         self.reward_normalizer = JaxNormalizer((1,))
@@ -417,6 +425,7 @@ if __name__ == '__main__':
 
     buffer = JaxReplayBuffer(obs_shape, action_shape, normalize=True)
     initial_state = buffer.initialize_buffer_state()
+
 
     def step(carry, ins):
         state = carry[0]
@@ -441,6 +450,7 @@ if __name__ == '__main__':
         jax.debug.print('obs_std = {x}', x=next_state.state_normalizer_state.std)
         jax.debug.print('obs_mean = {x}', x=next_state.state_normalizer_state.mean)
         return carry, out
+
 
     carry = [initial_state, jax.random.PRNGKey(0)]
     carry, outs = jax.lax.scan(step, carry, xs=None, length=10)

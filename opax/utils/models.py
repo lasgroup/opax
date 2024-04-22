@@ -1,6 +1,7 @@
 import functools
-from typing import Sequence, Callable, Union, NamedTuple, Dict
+from typing import Sequence, Callable, Union, NamedTuple, Dict, Optional
 
+import chex
 import jax.numpy as jnp
 from flax import linen as nn
 from jax import jit, vmap, value_and_grad
@@ -14,17 +15,20 @@ from jax.tree_util import register_pytree_node_class
 from jax import random
 from jax.scipy.stats import multivariate_normal
 from functools import partial
+from jaxtyping import PyTree
 
 EPS = 1e-6
 
 
-def _calibration_errors(calibration_score_fn, params, xs, ys, ps, alpha, output_dim) -> jax.Array:
+def _calibration_errors(calibration_score_fn: Callable, params: PyTree, xs: chex.Array, ys: chex.Array,
+                        ps: chex.Array, alpha: chex.Array, output_dim: int) -> chex.Array:
     ps_hat = calibration_score_fn(params, xs, ys, ps, alpha)
     ps = jnp.repeat(ps[..., jnp.newaxis], repeats=output_dim, axis=1)
     return jnp.mean((ps - ps_hat) ** 2, axis=0)
 
 
-def _calculate_calibration_alpha(calibration_error_fn, params, xs, ys, num_ps, output_dim) -> jax.Array:
+def _calculate_calibration_alpha(calibration_error_fn: Callable, params: PyTree, xs: chex.Array, ys: chex.Array,
+                                 num_ps: int, output_dim: int) ->[chex.Array, chex.Array]:
     # We flip so that we rather take more uncertainty model than less
     ps = jnp.linspace(0, 1, num_ps + 1)[1:]
     test_alpha = jnp.flip(jnp.linspace(0, 10, 100)[1:])
@@ -37,7 +41,10 @@ def _calculate_calibration_alpha(calibration_error_fn, params, xs, ys, num_ps, o
     return best_alpha, jnp.diag(errors[indices])
 
 
-def _predict(apply_fn, params, x, sig_max, sig_min, rng=None, deterministic=False):
+def _predict(apply_fn: Callable, params: PyTree, x: chex.Array, sig_max: Union[chex.Array, float],
+             sig_min: Union[chex.Array, float], rng: Optional[jax.random.PRNGKeyArray] = None,
+             deterministic: bool = False) -> chex.Array:
+    """Predict next mean and aleatoric std."""
     forward = jax.vmap(apply_fn, (0, None))
     predictions = forward(params, x)
     mu, sig = jnp.split(predictions, 2, axis=-1)
@@ -54,7 +61,7 @@ class ProbabilisticEnsembleModel(object):
             self,
             example_input: jnp.ndarray,
             num_ensemble: int = 10,
-            features: Sequence[int] = [256, 256],
+            features: Sequence[int] = (256, 256),
             output_dim: int = 1,
             non_linearity: Callable = nn.swish,
             lr: float = 1e-3,
@@ -150,14 +157,16 @@ class ProbabilisticEnsembleModel(object):
         self.calculate_calibration_alpha = jax.jit(calculate_calibration_alpha)
 
     @property
-    def params(self):
+    def params(self) -> PyTree:
         return self.particles
 
-    def predict(self, x):
+    def predict(self, x: chex.Array) -> chex.Array:
         return self._predict(self.particles, x)
 
     @staticmethod
-    def _train_fn(predict_fn, update_fn, params, opt_state, x, y, prior_particles=None):
+    def _train_fn(predict_fn: Callable, update_fn: Callable, params: PyTree, opt_state: PyTree,
+                  x: chex.Array, y: chex.Array,
+                  prior_particles: Optional[PyTree] = None) -> [PyTree, PyTree, chex.Array, chex.Array]:
         likelihood = jax.vmap(gaussian_log_likelihood, in_axes=(None, 0, 0), out_axes=0)
 
         def likelihood_loss(model_params):
@@ -175,7 +184,7 @@ class ProbabilisticEnsembleModel(object):
         grad_norm = optax.global_norm(grads)
         return new_params, new_opt_state, loss, grad_norm
 
-    def train_step(self, x, y):
+    def train_step(self, x: chex.Array, y: chex.Array) -> [chex.Array, chex.Array]:
         new_params, new_opt_state, loss, grad_norm = self._train_step(
             params=self.particles,
             opt_state=self.opt_state,

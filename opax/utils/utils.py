@@ -1,3 +1,4 @@
+import chex
 import jax.numpy as jnp
 import optax
 from jax import jit
@@ -6,12 +7,13 @@ from functools import partial
 from opax.utils.type_aliases import ModelProperties, PolicyProperties
 from opax.utils.replay_buffer import Transition
 from typing import Optional, Union, Callable
+from jaxtyping import PyTree
 
 EPS = 1e-6
 
 
 @jit
-def gaussian_log_likelihood(x, mu, sig):
+def gaussian_log_likelihood(x: chex.Array, mu: chex.Array, sig: chex.Array):
     log_sig = jnp.log(sig + EPS)
     log_l = -0.5 * (2 * log_sig + jnp.log(2 * jnp.pi)
                     + jnp.square((x - mu) / (sig + EPS)))
@@ -20,12 +22,12 @@ def gaussian_log_likelihood(x, mu, sig):
 
 
 @jit
-def sample_normal_dist(mu, sig, rng):
+def sample_normal_dist(mu: chex.Array, sig: chex.Array, rng: jax.random.PRNGKeyArray):
     return mu + jax.random.normal(rng, mu.shape) * sig
 
 
 @jit
-def rbf_kernel(x, y, bandwidth=None):
+def rbf_kernel(x: chex.Array, y: chex.Array, bandwidth: Optional[float] = None):
     square_sum = lambda x, y: jnp.sum(jnp.square(x - y))
     pairwise = jax.vmap(lambda y: jax.vmap(lambda x: square_sum(x, y), in_axes=0, out_axes=0)(x))(y)
     n_x = x.shape[-2]
@@ -38,7 +40,8 @@ def rbf_kernel(x, y, bandwidth=None):
 
 
 @partial(jit, static_argnums=(2, 3))
-def rollout_actions(action_sequence, initial_state, dynamics_model, reward_model, rng):
+def rollout_actions(action_sequence: chex.Array, initial_state: chex.Array, dynamics_model, reward_model,
+                    rng: jax.random.PRNGKeyArray):
     state = initial_state
     states = jnp.zeros_like(initial_state)
     batch_size = initial_state.shape[0]
@@ -60,7 +63,8 @@ def rollout_actions(action_sequence, initial_state, dynamics_model, reward_model
 
 
 @partial(jit, static_argnums=(0, 2, 3, 5))
-def rollout_policy(policy, initial_state, dynamics_model, reward_model, rng, num_steps=10):
+def rollout_policy(policy: Callable, initial_state: chex.Array, dynamics_model, reward_model,
+                   rng: jax.random.PRNGKeyArray,  num_steps: int = 10):
     state = initial_state
     state_shape = (num_steps + 1,) + initial_state.shape
     states = jnp.zeros(state_shape)
@@ -104,7 +108,7 @@ def rollout_policy(policy, initial_state, dynamics_model, reward_model, rng, num
 @partial(jax.jit, static_argnums=(0, 3, 5, 11))
 def sample_trajectories(
         evaluate_fn: Callable,
-        parameters,
+        parameters: PyTree,
         init_state: jnp.ndarray,
         horizon: int,
         key: Optional[jax.random.PRNGKey],
@@ -203,7 +207,7 @@ def sample_trajectories(
     # return tuple(outs)  # noqa
 
 
-def tree_stack(trees, axis=0):
+def tree_stack(trees: PyTree, axis=0):
     """Takes a list of trees and stacks every corresponding leaf.
     For example, given two trees ((a, b), c) and ((a', b'), c'), returns
     ((stack(a, a'), stack(b, b')), stack(c, c')).
@@ -222,7 +226,7 @@ def tree_stack(trees, axis=0):
     return treedef_list[0].unflatten(result_leaves)
 
 
-def get_idx(tree, idx):
+def get_idx(tree: PyTree, idx: int):
     return jax.tree_util.tree_map(lambda x: x[idx], tree)
 
 

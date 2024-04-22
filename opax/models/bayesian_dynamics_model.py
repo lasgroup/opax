@@ -1,5 +1,6 @@
 from typing import Sequence, Callable, Optional
 
+import chex
 import numpy as np
 import gym
 from flax import linen as nn
@@ -11,10 +12,10 @@ from opax.utils.replay_buffer import Transition
 from opax.models.dynamics_model import DynamicsModel, ModelSummary
 from opax.utils.type_aliases import ModelProperties
 from opax.models.reward_model import RewardModel
-from typing import List
+from typing import List, Union
 from opax.utils.utils import gaussian_log_likelihood
 from opax.utils.network_utils import mse
-
+from jaxtyping import PyTree
 
 class SamplingType:
     name: str = 'TS1'
@@ -29,9 +30,9 @@ class SamplingType:
 
 
 @jax.jit
-def sample(predictions, idx, s_rng):
+def sample(predictions: chex.Array, idx: chex.Array, s_rng: jax.random.PRNGKeyArray):
     """
-    :param predictions: (Ne, n_state, 2)
+    :param predictions: (num ensembles, batch size, 2 x dim states)
     :param idx: (1, )
     :return:
     """
@@ -57,7 +58,7 @@ class BayesianDynamicsModel(DynamicsModel):
                  reward_model: RewardModel,
                  model_class: str = "ProbabilisticEnsembleModel",
                  num_ensemble: int = 10,
-                 features: Sequence[int] = [256, 256],
+                 features: Sequence[int] = (256, 256),
                  non_linearity: Callable = nn.swish,
                  lr: float = 1e-3,
                  weight_decay: float = 1e-4,
@@ -68,6 +69,24 @@ class BayesianDynamicsModel(DynamicsModel):
                  *args,
                  **kwargs
                  ):
+        """
+
+        :param action_space: gym.spaces.box, action space of the env
+        :param observation_space: gym.spaces.box, observation space of the env
+        :param reward_model: RewardModel
+        :param model_class: str, indicates the type of model being used FSVGD vs ensembles
+        :param num_ensemble: int, number of ensembles
+        :param features: Sequence[int], number of features in the neural network
+        :param non_linearity: Callable, nonlinear activation function
+        :param lr: float, learning rate for the model training
+        :param weight_decay: float, weight decay for the model training
+        :param sig_min: float, minimal aleatoric std
+        :param sig_max: float, maximal aleatoric std
+        :param deterministic: bool, boolean to indicate if the model is deterministic or probabilistic
+        :param seed: int, seed for model initialization
+        :param args:
+        :param kwargs:
+        """
 
         super(BayesianDynamicsModel, self).__init__(*args, **kwargs)
         self.reward_model = reward_model
@@ -75,7 +94,6 @@ class BayesianDynamicsModel(DynamicsModel):
             model_cls = ProbabilisticEnsembleModel
         elif model_class == "fSVGDEnsemble":
             model_cls = FSVGDEnsemble
-
         else:
             assert False, "Model class must be ProbabilisticEnsembleModel or fSVGDEnsemble."
 
@@ -96,7 +114,6 @@ class BayesianDynamicsModel(DynamicsModel):
             sig_min=sig_min,
             sig_max=sig_max,
             deterministic=deterministic,
-
         )
         self.sampling_type = SamplingType()
         self.sampling_idx = jnp.zeros(1)
@@ -106,6 +123,7 @@ class BayesianDynamicsModel(DynamicsModel):
         self.evaluate_for_exploration = self.evaluate
 
     def _init_fn(self):
+        """Defines basic functions for model and jits them."""
         def predict(parameters,
                     obs,
                     action,
@@ -196,12 +214,22 @@ class BayesianDynamicsModel(DynamicsModel):
 
     @staticmethod
     def _predict_raw(
-            predict_fn,
-            parameters,
+            predict_fn: Callable,
+            parameters: PyTree,
             tran: Transition,
             model_props: ModelProperties = ModelProperties(),
             pred_diff: bool = 1,
-    ):
+    ) -> [chex.Array, chex.Array]:
+        """
+        :param predict_fn: Callable, forward pass through the dynamics model
+        :param parameters: PyTree, model parameters
+        :param tran: Transitions, transitions for which the state is predicted
+        :param model_props: ModelProperties
+        :param pred_diff: bool, whether the model predicts diff or next state
+        :return
+        :output next_obs_mean: chex.Array -> mean prediction of each ensemble member
+        :output next_obs_std: chex.Array -> std prediction of each ensemble member
+        """
         alpha = model_props.alpha
         bias_obs = model_props.bias_obs
         bias_act = model_props.bias_act
@@ -211,35 +239,45 @@ class BayesianDynamicsModel(DynamicsModel):
         scale_out = model_props.scale_out
         obs = tran.obs
         action = tran.action
+        # normalize obs and action
         transformed_obs = (obs - bias_obs) / scale_obs
         transformed_act = (action - bias_act) / scale_act
+        # get next mean and uncertainty prediction from the model
         obs_action = jnp.concatenate([transformed_obs, transformed_act], axis=-1)
         next_obs_tot = predict_fn(parameters, obs_action)
         mean, std = jnp.split(next_obs_tot, 2, axis=-1)
+        # unnormalize predictions
         next_obs_mean = mean * scale_out + bias_out + pred_diff * obs
         next_obs_std = std * scale_out
         return next_obs_mean, next_obs_std
 
     @staticmethod
-    def _predict(predict_fn,
-                 parameters,
-                 obs,
-                 action,
-                 rng,
-                 sampling_type,
-                 num_ensembles,
-                 sampling_idx,
+    def _predict(predict_fn: Callable,
+                 parameters: PyTree,
+                 obs: chex.Array,
+                 action: chex.Array,
+                 rng: jax.random.PRNGKeyArray,
+                 sampling_type: SamplingType,
+                 num_ensembles: int,
+                 sampling_idx: chex.Array,
                  model_props: ModelProperties = ModelProperties(),
-                 pred_diff: bool = 1,
+                 pred_diff: bool = True,
                  ):
         """
-                Predict using learning model
-                :param obs: observation, shape (batch, dim_state)
-                :param action: action, shape (batch, dim_action)
-                :param rng:
-                :return:
+        :param predict_fn: Callable, prediction function
+        :param parameters: PyTree, model parameters
+        :param obs: chex.Array
+        :param action: chex.Array
+        :param rng: jax.random.PRNGKeyArray
+        :param sampling_type: SamplingType
+        :param num_ensembles: int
+        :param sampling_idx: chex.Array
+        :param model_props: ModelProperties
+        :param pred_diff: bool
+        :return:
+        """
 
-                """
+        # normalize and predict the next state distribution with each ensemble
         alpha = model_props.alpha
         bias_obs = model_props.bias_obs
         bias_act = model_props.bias_act
@@ -253,6 +291,7 @@ class BayesianDynamicsModel(DynamicsModel):
         next_obs_tot = predict_fn(parameters, obs_action)
         next_obs = next_obs_tot
 
+        # predict with the ensembles using either mean, TS1, TSInf or DS
         sampling_scheme = 'mean' if rng is None \
             else sampling_type.name
 
@@ -308,10 +347,12 @@ class BayesianDynamicsModel(DynamicsModel):
         return next_obs
 
     @staticmethod
-    def _train(train_fn, predict_fn, calibrate_fn, tran: Transition, model_params, model_opt_state,
-               val: Transition = None):
+    def _train(train_fn: Callable, predict_fn: Callable, calibrate_fn: Callable, tran: Transition,
+               model_params: PyTree, model_opt_state: PyTree, val: Optional[Transition] = None) -> \
+            [PyTree, PyTree, chex.Array, ModelSummary]:
+        """Train dynamics model and validate"""
         alpha = jnp.ones(tran.obs.shape[-1])
-        best_score = 0.0
+        best_score = jnp.zeros(1)
         x = jnp.concatenate([tran.obs, tran.action], axis=-1)
         new_model_params, new_model_opt_state, likelihood, grad_norm = train_fn(
             params=model_params,
@@ -321,6 +362,8 @@ class BayesianDynamicsModel(DynamicsModel):
         )
         val_logl = jnp.zeros_like(likelihood)
         val_mse = jnp.zeros_like(likelihood)
+        val_al_std = jnp.zeros_like(likelihood)
+        val_ep_std = jnp.zeros_like(likelihood)
         if val is not None:
             val_x = jnp.concatenate([val.obs, val.action], axis=-1)
             val_y = val.next_obs
@@ -331,7 +374,9 @@ class BayesianDynamicsModel(DynamicsModel):
                 out_axes=0
             )
             mean, std = jnp.split(y_pred, 2, axis=-1)
+            val_al_std = std.mean()
             eps_std = jnp.std(mean, axis=0)
+            val_ep_std = eps_std.mean()
             logl = val_likelihood(val_y, mean, std)
             val_logl = logl.mean()
             val_mse = jax.vmap(
@@ -345,8 +390,8 @@ class BayesianDynamicsModel(DynamicsModel):
             grad_norm=grad_norm.astype(float),
             val_logl=val_logl.astype(float),
             val_mse=val_mse.astype(float),
-            val_al_std=std.mean().astype(float),
-            val_eps_std=eps_std.mean().astype(float),
+            val_al_std=val_al_std.astype(float),
+            val_eps_std=val_ep_std.astype(float),
             calibration_alpha=alpha.mean().astype(float),
             calibration_error=best_score.mean().astype(float),
         )
@@ -354,37 +399,38 @@ class BayesianDynamicsModel(DynamicsModel):
         return new_model_params, new_model_opt_state, alpha, summary
 
     @property
-    def model_params(self):
+    def model_params(self) -> PyTree:
         return self.model.particles
 
     @property
-    def model_opt_state(self):
+    def model_opt_state(self) -> PyTree:
         return self.model.opt_state
 
     @property
-    def init_model_params(self):
+    def init_model_params(self) -> PyTree:
         return self.model.init_particles
 
     @property
-    def init_model_opt_state(self):
+    def init_model_opt_state(self) -> PyTree:
         return self.model.init_opt_state
 
-    def update_model(self, model_params, model_opt_state, alpha):
+    def update_model(self, model_params: PyTree, model_opt_state: PyTree, alpha: Union[chex.Array, float]):
         super().update_model(model_params, model_opt_state, alpha)
         self.model.particles = model_params
         self.model.opt_state = model_opt_state
 
     @staticmethod
     def _evaluate(
-            pred_fn,
-            reward_fn,
-            parameters,
-            obs,
-            action,
-            rng,
-            sampling_idx,
+            pred_fn: Callable,
+            reward_fn: Callable,
+            parameters: PyTree,
+            obs: chex.Array,
+            action: chex.Array,
+            rng: jax.random.PRNGKeyArray,
+            sampling_idx: chex.Array,
             model_props: ModelProperties = ModelProperties()
-    ):
+    ) -> [chex.Array, chex.Array]:
+        """Predict the next state and reward."""
         model_rng = None
         reward_rng = None
         if rng is not None:

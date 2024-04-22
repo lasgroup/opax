@@ -15,12 +15,28 @@ import wandb
 from typing import Union, Optional, Dict, Any
 from opax.models.hucrl_model import HUCRLModel
 from opax.models.gp_dynamics_model import GPDynamicsModel
+from jaxtyping import PyTree
 
 Model_list = list[DynamicsModel]
 
 
 class ModelBasedAgent(DummyAgent):
-
+    """
+    action_space: gym.spaces.box
+    observation_space: gym.spaces.box
+    dynamics_model: Union[DynamicsModel, Model_list], if multiple rewards a list of dynamics model is passed
+    policy_optimizer_name: str, name for the policy optimizer used for control
+    horizon: int, planning horizon for optimizer
+    n_particles: int, number of particles used in planning
+    reset_model: bool, if model should reset after every update
+    reset_model_opt_state: bool, if model optimizer state should reset after every update
+    calibrate_model: bool, if model calibration should be done
+    init_function: bool, if init function for the model should be called
+    optimizer_kwargs: Optional[Dict[str, Any]], kwargs for the model based policy optimizer
+    reset_optimizer_params_for: int, number of initial training steps for which the policy optimizer is reset
+    log_full_training: bool, if model training should be logged
+    log_agent_training: bool, if agent training should be logged
+    """
     def __init__(
             self,
             action_space: gym.spaces.box,
@@ -100,6 +116,7 @@ class ModelBasedAgent(DummyAgent):
             self._init_fn()
 
     def _init_fn(self):
+        """Creates model training function"""
         def step(carry, ins):
             rng = carry[0]
             model_params = carry[2]
@@ -132,7 +149,8 @@ class ModelBasedAgent(DummyAgent):
 
         self.step = jax.jit(step)
 
-    def act_in_jax(self, obs, rng, eval=False, eval_idx: int = 0):
+    def act_in_jax(self, obs: jax.Array, rng: jax.random.PRNGKeyArray, eval: bool = False, eval_idx: int = 0):
+        # forward pass through policy if policy optimizer is SAC
         if isinstance(self.policy_optimizer, SACOptimizer):
             if eval:
                 action = self.policy_optimizer.get_action_for_eval(obs=obs, rng=rng, agent_idx=eval_idx)
@@ -140,6 +158,7 @@ class ModelBasedAgent(DummyAgent):
                 action = self.policy_optimizer.get_action_for_exploration(obs=obs, rng=rng)
             action = action[..., :self.action_space.shape[0]]
         else:
+            # optimize for actions and take the first best one --> MPC
             if eval:
                 dim_state = obs.shape[-1]
                 obs = obs.reshape(-1, dim_state)
@@ -175,11 +194,20 @@ class ModelBasedAgent(DummyAgent):
         return action
 
     def train_step(self,
-                   rng,
+                   rng: jax.random.PRNGKeyArray,
                    buffer: ReplayBuffer,
                    validate: bool = True,
                    log_results: bool = True,
-                   ):
+                   ) -> int:
+        """
+        Training of model based agent
+        :param rng: jax.random.PRNGKeyArray, random key
+        :param buffer: ReplayBuffer, buffer of collected transition
+        :param validate: bool, boolean for validating model
+        :param log_results: bool, boolean to indicate logging of training results.
+        :return total_train_steps: int, total number of training steps done for the model
+        """
+        # if its a GP fit the model with all transitions
         if self.is_gp:
             transitions = buffer.get_full_normalized_data()
             train_rng, rng = jax.random.split(rng, 2)
@@ -204,6 +232,7 @@ class ModelBasedAgent(DummyAgent):
                     num_steps=total_train_steps,
                 )
         else:
+            # perform train steps on the NN model.
             max_train_steps_per_iter = 8000
             if self.num_epochs > 0:
                 total_train_steps = math.ceil(buffer.size * self.num_epochs / self.batch_size)
@@ -255,6 +284,7 @@ class ModelBasedAgent(DummyAgent):
             if self.calibrate_model:
                 alpha = carry[1]
         self.update_models(model_params=model_params, model_opt_state=model_opt_state, alpha=alpha)
+        # train policy if SAC optimizer is used.
         if isinstance(self.policy_optimizer, SACOptimizer):
             if buffer.size > self.policy_optimizer.transitions_per_update:
                 train_rng = carry[0]
@@ -293,6 +323,7 @@ class ModelBasedAgent(DummyAgent):
                        scale_act: Union[jnp.ndarray, float] = 1.0,
                        scale_out: Union[jnp.ndarray, float] = 1.0,
                        ):
+        """Set normalization factors for the dynamics models."""
         for i in range(len(self.dynamics_model_list)):
             self.dynamics_model_list[i].set_transforms(
                 bias_obs=bias_obs,
@@ -306,13 +337,15 @@ class ModelBasedAgent(DummyAgent):
     def predict_next_state(self,
                            tran: Transition,
                            ):
+        """Predict next state with learned model."""
         return self.dynamics_model.predict_raw(
             parameters=self.dynamics_model.model_params,
             tran=tran,
             model_props=self.dynamics_model.model_props,
         )
 
-    def update_models(self, model_params, model_opt_state, alpha: float = 1.0):
+    def update_models(self, model_params: PyTree, model_opt_state: PyTree, alpha: Union[float, jax.Array] = 1.0):
+        """Update model for params."""
         for i in range(len(self.dynamics_model_list)):
             self.dynamics_model_list[i].update_model(
                 model_params=model_params,
@@ -321,11 +354,11 @@ class ModelBasedAgent(DummyAgent):
             )
 
     @property
-    def dynamics_model(self):
+    def dynamics_model(self) -> DynamicsModel:
         return self.dynamics_model_list[0]
 
     @property
-    def reset_agent_params(self):
+    def reset_agent_params(self) -> bool:
         return self.update_steps < self.reset_optimizer_params_for
 
     def prepare_agent_for_rollout(self):
@@ -336,5 +369,5 @@ class ModelBasedAgent(DummyAgent):
             self.dynamics_model_list[i].update_model_posterior(buffer=buffer)
 
     @property
-    def is_gp(self):
+    def is_gp(self) -> bool:
         return isinstance(self.dynamics_model, GPDynamicsModel)

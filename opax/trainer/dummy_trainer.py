@@ -1,5 +1,3 @@
-import functools
-
 import jax
 from opax.utils.replay_buffer import Transition, ReplayBuffer
 from opax.agents.dummy_agent import DummyAgent
@@ -15,7 +13,32 @@ import glob
 from datetime import datetime
 
 
+# TODO learn deltas, validate_agent should only be used by model based agent.
 class DummyTrainer(object):
+    """Dummy Trainer for training a RL agent
+
+    env: VecEnv, Vectorized environment for RL
+    agent: DummyAgent, RL Agent
+    buffer_size: int, Replay buffer size
+    total_train_steps: int, Total number of training steps for the RL agent.
+    train_freq: int, frequency of training wrt rollouts in the real environment
+    eval_freq: int, frequency of evaluation wrt rollouts in the real environment.
+    seed: int
+    exploration_steps: int, number of random data points collected before agent update.
+    rollout_steps: int, Number of steps per rollout in the environment
+    eval_episodes: int, Number of episodes used for evaluation
+    agent_name: str, Name of the agent
+    use_wandb: bool, boolean to indicated logging in wandb
+    validate: bool, boolean to indicate policy validation (generally only used for model based RL)
+    normalize: bool, boolean to indicate if data is normalized or not
+    action_normalize: bool, boolean to indicate if actions should be normalized
+    learn_deltas: bool, boolean to indicate if model learns a delta
+    record_test_video: bool, boolean to indicate if video should be recorded for model evaluation
+    video_prefix: str, prefix of the recorded video
+    video_folder: str, folder where the videos are stored
+    test_env: Optional[Union[VecEnv, Env]], environment on which the agent is tested.
+    """
+
     def __init__(self,
                  env: VecEnv,
                  agent: DummyAgent,
@@ -66,6 +89,7 @@ class DummyTrainer(object):
         self.video_dir_name = video_folder + 'video' + str(seed) + video_prefix + dt_string
         self.record_test_video = record_test_video
 
+        # wraps test environment with recordvideo wraper if record_test_video is true
         def get_test_env_wrapper(env_num):
             video_dir_name = self.video_dir_name
             if self.record_test_video:
@@ -76,6 +100,7 @@ class DummyTrainer(object):
                 test_env_wrapper = lambda x: x
             return test_env_wrapper, video_dir_name
 
+        # Loop over test envs and store them.
         if test_env is None:
             test_env_wrapper, video_dir_name = get_test_env_wrapper(env_num=0)
             self.test_env = [
@@ -117,19 +142,27 @@ class DummyTrainer(object):
         pass
 
     def save_agent(self, step=0, agent_name=None):
+        # TODO implement this function
         pass
-        # if self.use_wandb:
-        #    prefix = str(step)
-        #    name = self.agent_name if agent_name is None else agent_name
-        #    name = name + "_" + prefix
-        #    save_dir = os.path.join(wandb.run.dir, name)
-        #    with open(save_dir, 'wb') as outp:
-        #        cloudpickle.dump(self.agent, outp)
 
-    def step_env(self, obs, policy, num_steps, rng):
+    def load_agent(self, agent_directory: str):
+        # TODO implement this function
+        pass
+
+    def step_env(self, obs: Union[jax.Array, np.ndarray], policy: Callable, num_steps: int,
+                 rng: jax.random.PRNGKeyArray) -> [Transition, Union[jax.Array, np.ndarray],
+                                                   Union[jax.Array, np.ndarray, bool]]:
+        """
+        Step in the environment starting at initial state obs. Env is not reset.
+        :param obs: Last observation in the environment
+        :param policy: Policy function
+        :param num_steps: Num steps for rollout
+        :param rng: random key for rollout
+        :return: transitions, last_obs, last_done
+        """
         self.agent.prepare_agent_for_rollout()
         rng, reset_rng = jax.random.split(rng, 2)
-        num_points = int(num_steps*self.num_envs)
+        num_points = int(num_steps * self.num_envs)
         obs_shape = (num_points,) + self.env.observation_space.shape
         action_space = (num_points,) + self.env.action_space.shape
         obs_vec = np.zeros(obs_shape)
@@ -145,11 +178,11 @@ class DummyTrainer(object):
             action = policy(obs, actor_rng)
             next_obs, reward, terminate, truncate, info = self.env.step(action)
 
-            obs_vec[step*self.num_envs: (step+1)*self.num_envs] = obs
-            action_vec[step*self.num_envs: (step+1)*self.num_envs] = action
-            reward_vec[step*self.num_envs: (step+1)*self.num_envs] = reward.reshape(-1)
-            next_obs_vec[step*self.num_envs: (step+1)*self.num_envs] = next_obs
-            done_vec[step*self.num_envs: (step+1)*self.num_envs] = terminate.reshape(-1)
+            obs_vec[step * self.num_envs: (step + 1) * self.num_envs] = obs
+            action_vec[step * self.num_envs: (step + 1) * self.num_envs] = action
+            reward_vec[step * self.num_envs: (step + 1) * self.num_envs] = reward.reshape(-1)
+            next_obs_vec[step * self.num_envs: (step + 1) * self.num_envs] = next_obs
+            done_vec[step * self.num_envs: (step + 1) * self.num_envs] = terminate.reshape(-1)
             obs = np.concatenate([x['current_env_state'].reshape(1, -1) for x in info], axis=0)
             dones = np.concatenate([np.asarray(x['last_done']).reshape(1, -1) for x in info], axis=0)
 
@@ -164,12 +197,19 @@ class DummyTrainer(object):
         )
         return transitions, last_obs, last_done
 
-    def rollout_policy(self, num_steps, policy, rng):
+    def rollout_policy(self, num_steps: int, policy: Callable, rng: jax.random.PRNGKeyArray) -> Transition:
+        """
+        rollout a policy in the env. Env is reset before and after the rollout.
+        :param num_steps: int, number of steps for rollout
+        :param policy: Callable
+        :param rng: jax.random.PRNGKeyArray
+        :return: transition: Transition from rollout
+        """
         self.agent.prepare_agent_for_rollout()
         rng, reset_rng = jax.random.split(rng, 2)
         reset_seed = jax.random.randint(
             reset_rng,
-            (1, ),
+            (1,),
             minval=0,
             maxval=num_steps).item()
         obs, _ = self.env.reset(seed=reset_seed)
@@ -223,7 +263,14 @@ class DummyTrainer(object):
         obs, _ = self.env.reset(seed=reset_seed)
         return transitions
 
-    def eval_policy(self, step=0, rng=None) -> float:
+    def eval_policy(self, step: int = 0, rng: Optional[jax.random.PRNGKeyArray] = None) -> dict:
+        """
+        Evaluates policy in the environment till it is done.
+
+        :param step: Current step for evaluation
+        :param rng: key
+        :return reward_log: results log from evaluation
+        """
         reward_log = {
 
         }
@@ -255,7 +302,7 @@ class DummyTrainer(object):
                     mp4 = mp4list[-1]
                     # log gameplay video in wandb
                     wandb.log({"gameplays":
-                                   wandb.Video(mp4, caption='episode/step: '+str(step) + '/task:' + str(i),
+                                   wandb.Video(mp4, caption='episode/step: ' + str(step) + '/task:' + str(i),
                                                fps=4, format="gif"),
                                "step": step})
         return reward_log

@@ -1,10 +1,13 @@
-from typing import Optional
+from typing import Optional, Callable, Union
+
+import chex
 import jax
 import jax.numpy as jnp
 from opax.utils.utils import sample_normal_dist
 from opax.utils.replay_buffer import Transition
 from opax.models.bayesian_dynamics_model import BayesianDynamicsModel
 from opax.utils.type_aliases import ModelProperties
+from jaxtyping import PyTree
 
 
 @jax.jit
@@ -157,19 +160,20 @@ class HUCRLModel(BayesianDynamicsModel):
         self._train_step = jax.jit(_train_step)
 
     @staticmethod
-    def _predict(predict_fn,
-                 parameters,
-                 act_dim,
-                 obs,
-                 action,
-                 rng,
-                 num_ensembles,
-                 beta,
+    def _predict(predict_fn: Callable,
+                 parameters: PyTree,
+                 act_dim: int,
+                 obs: chex.Array,
+                 action: chex.Array,
+                 rng: jax.random.PRNGKeyArray,
+                 num_ensembles: int,
+                 beta: float,
                  model_props: ModelProperties = ModelProperties(),
                  pred_diff: bool = 1,
                  use_optimism: bool = 1,
                  sampling_idx: Optional[int] = None,
                  ):
+        """predict with optimism."""
         alpha = model_props.alpha
         bias_obs = model_props.bias_obs
         bias_act = model_props.bias_act
@@ -216,16 +220,17 @@ class HUCRLModel(BayesianDynamicsModel):
 
     @staticmethod
     def _evaluate(
-            pred_fn,
-            reward_fn,
-            act_dim,
-            parameters,
-            obs,
-            action,
-            rng,
+            pred_fn: Callable,
+            reward_fn: Callable,
+            act_dim: int,
+            parameters: PyTree,
+            obs: chex.Array,
+            action: chex.Array,
+            rng: jax.random.PRNGKeyArray,
             model_props: ModelProperties = ModelProperties(),
             sampling_idx: Optional[int] = None,
     ):
+        """Predict next state with optimism and obtain the next reward."""
         model_rng = None
         reward_rng = None
         if rng is not None:
