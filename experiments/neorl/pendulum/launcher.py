@@ -41,6 +41,7 @@ _applicable_configs = {
     'action_repeat': [1],
     'lr': [1e-3],
     'colored_noise_exponent': [0.25],
+    'calibrate_model': [0, 1],
 }
 
 _applicable_configs_hucrl = {'exploration_strategy': ['HUCRL'], 'beta': [1.0, 2.0, 3.0]} | _applicable_configs

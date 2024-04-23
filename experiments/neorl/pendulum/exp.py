@@ -25,7 +25,7 @@ def experiment(
         record_test_video: bool, validation_buffer_size: int, validation_batch_size: int,
         seed: int, exploration_strategy: str,
         time_limit_eval: int, action_cost: float = 0.0, action_repeat: int = 1, lr: float = 1e-3,
-        colored_noise_exponent: float = 0.25,
+        colored_noise_exponent: float = 0.25, calibrate_model: bool = True,
 ):
     optimizer_config = dict(
         num_samples=num_samples,
@@ -48,6 +48,7 @@ def experiment(
         eval_freq=eval_freq,
         num_epochs=num_epochs,
         lr=lr,
+        calibrate_model=calibrate_model,
     )
 
     trainer_config = dict(
@@ -182,6 +183,7 @@ def experiment(
         policy_optimizer_name='iCemTO',
         optimizer_kwargs=optimizer_kwargs,
         horizon=horizon,
+        calibrate_model=calibrate_model,
     )
 
     uniform_exploration = exploration_strategy == 'Uniform'
@@ -284,6 +286,7 @@ def main(args):
         action_repeat=args.action_repeat,
         lr=args.lr,
         colored_noise_exponent=args.colored_noise_exponent,
+        calibrate_model=bool(args.calibrate_model),
     )
 
     t_end = time.time()
@@ -355,6 +358,7 @@ if __name__ == '__main__':
     parser.add_argument('--action_repeat', type=int, default=1)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--colored_noise_exponent', type=float, default=0.25)
+    parser.add_argument('--calibrate_model', type=int, default=1)
 
     # general args
     parser.add_argument('--exp_result_folder', type=str, default=None)
