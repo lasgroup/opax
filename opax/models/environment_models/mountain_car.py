@@ -9,9 +9,11 @@ from opax.utils.type_aliases import ModelProperties
 
 class MountainCarRewardModel(RewardModel):
 
-    def __init__(self, env: Continuous_MountainCarEnv = Continuous_MountainCarEnv(), *args, **kwargs):
+    def __init__(self, env: Continuous_MountainCarEnv = Continuous_MountainCarEnv(),
+                 action_cost: float = 0.1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.env = env
+        self.action_cost = action_cost
 
     @partial(jax.jit, static_argnums=(0,))
     def predict(self, obs, action, next_obs=None, rng=None):
@@ -20,16 +22,17 @@ class MountainCarRewardModel(RewardModel):
         terminate = jnp.logical_and(pos >= self.env.goal_position, velocity >= self.env.goal_velocity)
         # reward = - (action ** 2) * 0.1 - 100 * ((pos - self.env.goal_position) ** 2 +
         #                                        (velocity - self.env.goal_velocity) ** 2)
-        reward = - (action[..., 0] ** 2) * 0.1 + 100 * terminate
+        reward = - (action[..., 0] ** 2) * self.action_cost + 100 * terminate
         return reward.reshape(-1).squeeze()
 
 
 class MountainCarDynamics(DynamicsModel):
 
-    def __init__(self, env: Continuous_MountainCarEnv = Continuous_MountainCarEnv(), *args, **kwargs):
+    def __init__(self, env: Continuous_MountainCarEnv = Continuous_MountainCarEnv(), action_cost: float = 0.1,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.env = env
-        self.reward_model = MountainCarRewardModel(env=env)
+        self.reward_model = MountainCarRewardModel(env=env, action_cost=action_cost)
         self.obs_dim = 2
         self.act_dim = 1
 
