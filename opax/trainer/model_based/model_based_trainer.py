@@ -73,11 +73,11 @@ class ModelBasedTrainer(DummyTrainer):
                 done=done_vec,
             )
 
-            #policy = lambda x, y: np.concatenate(
+            # policy = lambda x, y: np.concatenate(
             #    [self.env.action_space.sample().reshape(1, -1)
             #     for s in range(self.num_envs)], axis=0)
-            #self.rng, val_rng = random.split(self.rng, 2)
-            #transitions = self.rollout_policy(validation_buffer_size,
+            # self.rng, val_rng = random.split(self.rng, 2)
+            # transitions = self.rollout_policy(validation_buffer_size,
             #                                  policy,
             #                                  val_rng
             #                                  )
@@ -181,6 +181,7 @@ class ModelBasedTrainer(DummyTrainer):
         # reset env before training starts
         obs, _ = self.env.reset(seed=reset_seed)
         step = 0
+        accumulated_reward = 0.0
         for step in tqdm(range(learning_steps)):
             # collect rollouts with policy
             actor_rng, train_rng = random.split(rng_keys[step], 2)
@@ -196,6 +197,9 @@ class ModelBasedTrainer(DummyTrainer):
                 scale_act=self.buffer.action_normalizer.std,
                 scale_out=self.buffer.next_state_normalizer.std,
             )
+            accumulated_reward = accumulated_reward + transitions.reward.reshape(
+                (self.num_envs, self.rollout_steps, -1)
+            ).mean(0).sum().item()
             self.agent.update_posterior(self.buffer)
             reward_log = {}
             train_step_log = {}
@@ -203,6 +207,10 @@ class ModelBasedTrainer(DummyTrainer):
             env_step_log = {
                 'env_steps': step * self.rollout_steps * self.num_envs,
                 'learning_step': step,
+                'accumulated_reward': accumulated_reward,
+                'average_reward': transitions.reward.reshape(
+                    (self.num_envs, self.rollout_steps, -1)
+                ).mean().item()
             }
             # update agent
             if step % self.train_freq == 0 and (self.buffer.size >= self.agent.batch_size or self.agent.is_gp):
