@@ -25,6 +25,7 @@ required = [
     'trajax @ git+ssh://git@github.com/lenarttreven/trajax.git',
     'jaxtyping~=0.2.28',
     'moviepy'
+    'mujoco<=2.3.7'
 ]
 
 extras = {'dev': ['seaborn', 'control>=0.9.2']}

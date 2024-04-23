@@ -1,13 +1,8 @@
 from experiments.util_neorl import generate_run_commands, generate_base_command, dict_permutations
 from experiments.neorl.pendulum import exp
-import yaml
 import argparse
-import numpy as np
-import copy
-import os
-import itertools
 
-PROJECT_NAME = 'NeoRL-Pend'
+PROJECT_NAME = 'NeoRL-PendUp23April'
 _applicable_configs = {
     'use_wandb': [1],
     'exp_name': [PROJECT_NAME],
@@ -18,40 +13,42 @@ _applicable_configs = {
     'num_elites': [50],
     'num_steps': [10],
     'horizon': [20],
-    'n_particles': [10],
+    'n_particles': [5],
     'reset_model': [0],
     'num_ensembles': [10],
     'hidden_layers': [2],
     'num_neurons': [256],
-    'beta': [2.0],
     'deterministic': [0],
     'max_train_steps': [5_000],
     'pred_diff': [1],
     'batch_size': [64],
-    'num_epochs': [100],
+    'num_epochs': [50],
     'eval_freq': [5],
-    'total_train_steps': [5000],
+    'total_train_steps': [2_000],
     'buffer_size': [1_000_000],
     'exploration_steps': [0],
     'eval_episodes': [1],
     'train_freq': [1],
-    'rollout_steps': [50],
+    'rollout_steps': [10],
     'normalize': [1],
     'action_normalize': [1],
     'validate': [1],
     'record_test_video': [1],
     'validation_buffer_size': [100_000],
     'validation_batch_size': [10_000],
-    'exploration_strategy': ['HUCRL', 'PETS', 'Mean'],
-    'action_cost': [0.0, 0.01, 0.1, 0.2],
+    'action_cost': [0.0, 0.1, 0.2, 0.5],
     'time_limit_eval': [1_000],
     'action_repeat': [1],
     'lr': [1e-3],
     'colored_noise_exponent': [0.25],
 }
 
+_applicable_configs_hucrl = {'exploration_strategy': ['HUCRL'], 'beta': [1.0, 2.0, 3.0]} | _applicable_configs
+_applicable_configs_pets = {'exploration_strategy': ['PETS'], 'beta': [0.0]} | _applicable_configs
+_applicable_configs_mean = {'exploration_strategy': ['Mean'], 'beta': [0.0]} | _applicable_configs
 
-all_flags_combinations = dict_permutations(_applicable_configs)
+all_flags_combinations = dict_permutations(_applicable_configs_hucrl) + dict_permutations(_applicable_configs_pets) \
+                         + dict_permutations(_applicable_configs_mean)
 
 
 def main(args):
@@ -76,7 +73,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_cpus', type=int, default=1, help='number of cpus to use')
     parser.add_argument('--num_gpus', type=int, default=1, help='number of gpus to use')
-    parser.add_argument('--mode', type=str, default='local', help='how to launch the experiments')
+    parser.add_argument('--mode', type=str, default='euler', help='how to launch the experiments')
     parser.add_argument('--long_run', default=False, action="store_true")
 
     args = parser.parse_args()

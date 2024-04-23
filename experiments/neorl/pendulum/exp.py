@@ -11,9 +11,8 @@ import argparse
 from experiments.util import Logger, hash_dict, NumpyArrayEncoder
 import wandb
 from opax.models.hucrl_model import HUCRLModel
-from opax.models.environment_models.pendulum_swing_up import PendulumReward, CustomPendulumEnv, PendulumDynamicsModel
+from opax.models.environment_models.pendulum_swing_up import PendulumReward, CustomPendulumEnv
 from opax.envs.wrappers.action_repeat import ActionRepeat
-import jax.numpy as jnp
 
 
 def experiment(
@@ -91,20 +90,22 @@ def experiment(
         min_action=-1,
         max_action=1,
     )
-    env_kwargs_keep_down = {
-        'target_angle': jnp.pi,
+    env_kwargs_keep_up = {
+        'target_angle': 0.0,
+        'ctrl_cost': action_cost,
     }
     env = make_vec_env(env_id=CustomPendulumEnv, wrapper_class=wrapper_cls, n_envs=n_envs, seed=seed,
-                       env_kwargs=env_kwargs_keep_down)
+                       env_kwargs=env_kwargs_keep_up)
 
     test_env = make_vec_env(env_id=CustomPendulumEnv, wrapper_class=wrapper_cls_test, n_envs=n_envs, seed=seed,
-                            env_kwargs=env_kwargs_keep_down)
+                            env_kwargs=env_kwargs_keep_up)
 
     test_env = [test_env]
     features = tuple([num_neurons] * hidden_layers)
-    reward_model_keep_down = PendulumReward(action_space=env.action_space, target_angle=np.pi,
+    reward_model_keep_up = PendulumReward(action_space=env.action_space,
+                                            target_angle=env_kwargs_keep_up['target_angle'],
                                             ctrl_cost_weight=action_cost)
-    reward_model_keep_down.set_bounds(max_action=1.0)
+    reward_model_keep_up.set_bounds(max_action=1.0)
 
     video_prefix = ""
     if exploration_strategy == 'Mean':
@@ -113,7 +114,7 @@ def experiment(
             action_space=env.action_space,
             observation_space=env.observation_space,
             num_ensemble=num_ensembles,
-            reward_model=reward_model_keep_down,
+            reward_model=reward_model_keep_up,
             features=features,
             pred_diff=pred_diff,
             beta=0.0,
@@ -127,7 +128,7 @@ def experiment(
             action_space=env.action_space,
             observation_space=env.observation_space,
             num_ensemble=num_ensembles,
-            reward_model=reward_model_keep_down,
+            reward_model=reward_model_keep_up,
             features=features,
             pred_diff=pred_diff,
             seed=seed,
@@ -141,7 +142,7 @@ def experiment(
             action_space=env.action_space,
             observation_space=env.observation_space,
             num_ensemble=num_ensembles,
-            reward_model=reward_model_keep_down,
+            reward_model=reward_model_keep_up,
             features=features,
             pred_diff=pred_diff,
             beta=beta,
@@ -156,7 +157,7 @@ def experiment(
             action_space=env.action_space,
             observation_space=env.observation_space,
             num_ensemble=num_ensembles,
-            reward_model=reward_model_keep_down,
+            reward_model=reward_model_keep_up,
             features=features,
             pred_diff=pred_diff,
             seed=seed,
@@ -341,16 +342,16 @@ if __name__ == '__main__':
     parser.add_argument('--exploration_steps', type=int, default=0)
     parser.add_argument('--eval_episodes', type=int, default=1)
     parser.add_argument('--train_freq', type=int, default=1)
-    parser.add_argument('--rollout_steps', type=int, default=200)
+    parser.add_argument('--rollout_steps', type=int, default=10)
     parser.add_argument('--normalize', type=int, default=1)
     parser.add_argument('--action_normalize', type=int, default=1)
     parser.add_argument('--validate', type=int, default=1)
-    parser.add_argument('--record_test_video', type=int, default=1)
+    parser.add_argument('--record_test_video', type=int, default=0)
     parser.add_argument('--validation_buffer_size', type=int, default=100000)
     parser.add_argument('--validation_batch_size', type=int, default=4096)
     parser.add_argument('--exploration_strategy', type=str, default='Optimistic')
     parser.add_argument('--action_cost', type=float, default=0.0)
-    parser.add_argument('--time_limit_eval', type=int, default=1000)
+    parser.add_argument('--time_limit_eval', type=int, default=10)
     parser.add_argument('--action_repeat', type=int, default=1)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--colored_noise_exponent', type=float, default=0.25)
