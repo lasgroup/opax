@@ -29,12 +29,14 @@ class MountainCarRewardModel(RewardModel):
 class MountainCarDynamics(DynamicsModel):
 
     def __init__(self, env: Continuous_MountainCarEnv = Continuous_MountainCarEnv(), action_cost: float = 0.1,
+                 noise_std: float = 0.0,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.env = env
         self.reward_model = MountainCarRewardModel(env=env, action_cost=action_cost)
         self.obs_dim = 2
         self.act_dim = 1
+        self.noise_std = noise_std
 
     @partial(jax.jit, static_argnums=(0,))
     def predict(self, obs, action, rng=None, *args, **kwargs):
@@ -50,6 +52,9 @@ class MountainCarDynamics(DynamicsModel):
         out_of_bounds = jnp.logical_and(next_position - self.env.min_position <= 0.0, next_velocity < 0.0)
         next_velocity = (1 - out_of_bounds) * next_velocity
         next_obs = jnp.concatenate([next_position, next_velocity], axis=-1).reshape(-1, 2).squeeze()
+        if rng is not None:
+            noise = jax.random.normal(rng, shape=next_obs.shape) * self.noise_std
+            next_obs = next_obs + noise
         return next_obs
 
     @partial(jax.jit, static_argnums=(0,))
