@@ -7,7 +7,7 @@ from functools import partial
 class SwimmerRewardModel(RewardModel):
     """Get Pendulum Reward."""
 
-    def __init__(self, ctrl_cost_weight: bool = 0.0, scarce_reward: bool = False, tol: float = 5e-2,
+    def __init__(self, ctrl_cost_weight: float = 0.0, scarce_reward: bool = False, tol: float = 5e-2,
                  distance_weight: float = 1.0):
         super().__init__()
         self.ctrl_cost_weight = ctrl_cost_weight
