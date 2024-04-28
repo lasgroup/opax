@@ -2,11 +2,11 @@ from experiments.util_neorl import generate_run_commands, generate_base_command,
 from experiments.neorl.pendulum import exp
 import argparse
 
-PROJECT_NAME = 'NeoRL-PendUp23April'
+PROJECT_NAME = 'NeoRL-PendUp23ApriilFinalRun'
 _applicable_configs = {
     'use_wandb': [1],
     'exp_name': [PROJECT_NAME],
-    'seed': list(range(5)),
+    'seed': list(range(10)),
     'time_limit': [1_000_000],
     'n_envs': [1],
     'num_samples': [500],
@@ -24,7 +24,7 @@ _applicable_configs = {
     'batch_size': [64],
     'num_epochs': [50],
     'eval_freq': [5],
-    'total_train_steps': [2_000],
+    'total_train_steps': [1_000],
     'buffer_size': [1_000_000],
     'exploration_steps': [0],
     'eval_episodes': [1],
@@ -41,10 +41,10 @@ _applicable_configs = {
     'action_repeat': [1],
     'lr': [1e-3],
     'colored_noise_exponent': [0.25],
-    'calibrate_model': [0, 1],
+    'calibrate_model': [1],
 }
 
-_applicable_configs_hucrl = {'exploration_strategy': ['HUCRL'], 'beta': [1.0, 2.0, 3.0]} | _applicable_configs
+_applicable_configs_hucrl = {'exploration_strategy': ['HUCRL'], 'beta': [2.0]} | _applicable_configs
 _applicable_configs_pets = {'exploration_strategy': ['PETS'], 'beta': [0.0]} | _applicable_configs
 _applicable_configs_mean = {'exploration_strategy': ['Mean'], 'beta': [0.0]} | _applicable_configs
 
