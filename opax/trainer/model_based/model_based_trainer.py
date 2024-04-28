@@ -182,6 +182,7 @@ class ModelBasedTrainer(DummyTrainer):
         obs, _ = self.env.reset(seed=reset_seed)
         step = 0
         accumulated_reward = 0.0
+        num_resets = 0
         for step in tqdm(range(learning_steps)):
             # collect rollouts with policy
             actor_rng, train_rng = random.split(rng_keys[step], 2)
@@ -201,6 +202,7 @@ class ModelBasedTrainer(DummyTrainer):
                 (self.num_envs, self.rollout_steps, -1)
             ).mean(0).sum().item()
             self.agent.update_posterior(self.buffer)
+            num_resets += transitions.done.sum().item()
             reward_log = {}
             train_step_log = {}
             model_log = {}
@@ -210,8 +212,10 @@ class ModelBasedTrainer(DummyTrainer):
                 'accumulated_reward': accumulated_reward,
                 'average_reward': transitions.reward.reshape(
                     (self.num_envs, self.rollout_steps, -1)
-                ).mean().item()
+                ).mean().item(),
+                'total_num_resets': num_resets,
             }
+
             # update agent
             if step % self.train_freq == 0 and (self.buffer.size >= self.agent.batch_size or self.agent.is_gp):
                 train_rng, agent_rng = random.split(train_rng, 2)
