@@ -25,7 +25,10 @@ required = [
     'trajax @ git+ssh://git@github.com/lenarttreven/trajax.git',
     'jaxtyping~=0.2.28',
     'moviepy'
-    'mujoco<=2.3.7'
+    'mujoco<=2.3.7',
+    'pyelastica==0.3.2',
+    'pyglet==2.0.15',
+    'vapory==0.1.2',
 ]
 
 extras = {'dev': ['seaborn', 'control>=0.9.2']}
@@ -37,4 +40,4 @@ setup(
     include_package_data=True,
     install_requires=required,
     extras_require=extras
-    )
+)
