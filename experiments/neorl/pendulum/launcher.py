@@ -36,7 +36,7 @@ _applicable_configs = {
     'record_test_video': [1],
     'validation_buffer_size': [100_000],
     'validation_batch_size': [10_000],
-    'action_cost': [0.0, 0.1, 0.2, 0.5],
+    'action_cost': [0.1],
     'time_limit_eval': [1_000],
     'action_repeat': [1],
     'lr': [1e-3],
