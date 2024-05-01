@@ -13,6 +13,7 @@ class BicycleEnv(Env):
                  reward_model: BicycleCarReward = BicycleCarReward(),
                  _np_random: Optional[np.random.Generator] = None,
                  render_mode: str = 'rgb_array',
+                 init_pos: Optional[np.ndarray] = None,
                  ):
         super(BicycleEnv).__init__()
         self.render_mode = render_mode
@@ -41,8 +42,11 @@ class BicycleEnv(Env):
             high=high,
             low=low,
         )
-
-        self.init_pos = np.array([1.42, -1.04, jnp.pi])
+        if init_pos is None:
+            self.init_pos = np.array([1.42, -1.04, jnp.pi])
+        else:
+            assert init_pos.shape == (3, )
+            self.init_pos = init_pos
         self.init_state = np.concatenate([
             self.init_pos[..., :2],
             np.sin(self.init_pos[2]).reshape(-1),
