@@ -26,7 +26,8 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
                num_epochs: int, rollout_steps: int, normalize: bool, action_normalize: bool, validate: bool,
                record_test_video: bool, validation_buffer_size: int, validation_batch_size: int,
                seed: int, exploration_strategy: str, use_log: bool, use_al: bool, action_cost: float = 0.0,
-               time_limit_eval: Optional[int] = None):
+               time_limit_eval: Optional[int] = None,
+               resume_path: Optional[str] = None):
     """ Run experiment for a given method and environment. """
     import jax.numpy as jnp
     """ Environment """
@@ -251,6 +252,11 @@ def experiment(logs_dir: str, use_wandb: bool, exp_name: str, time_limit: int, n
         video_prefix=video_prefix,
         video_folder=logs_dir,
     )
+    if resume_path is not None:
+        print("Loading training checkpoint from", resume_path)
+        trainer.load_agent(resume_path)
+        if total_train_steps > trainer.total_train_steps:
+            trainer.set_total_trainer_steps(total_train_steps)
     group_name = exploration_strategy
     if use_log:
         group_name += "_log_rewards"
@@ -331,6 +337,7 @@ def main(args):
         use_al=args.use_al,
         time_limit_eval=args.time_limit_eval,
         action_cost=args.action_cost,
+        resume_path=args.resume
     )
 
     t_end = time.time()
@@ -411,6 +418,8 @@ if __name__ == '__main__':
     # general args
     parser.add_argument('--exp_result_folder', type=str, default=None)
     parser.add_argument('--seed', type=int, default=834, help='random number generator seed')
+
+    parser.add_argument("--resume", type=str, default=None, help="Path to stored checkpoint from which to resume training")
 
     args = parser.parse_args()
     main(args)

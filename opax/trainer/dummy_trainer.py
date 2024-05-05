@@ -11,6 +11,25 @@ from gym.wrappers.record_video import RecordVideo
 from gym import Env
 import glob
 from datetime import datetime
+from dataclasses import dataclass
+from pathlib import Path
+import cloudpickle
+
+@dataclass
+class DummyTrainerState: # state of ongoing training to be used for resuming
+    buffer: ReplayBuffer
+    agent: DummyAgent
+    rng: jax.random.PRNGKey
+    eval_episodes: int
+    agent_name: str
+    total_train_steps: int
+    train_freq: int
+    eval_freq: int
+    exploration_steps: int
+    rollout_steps: int
+    validate: bool
+    record_test_video: bool
+    video_dir_name: str
 
 
 # TODO learn deltas, validate_agent should only be used by model based agent.
@@ -57,6 +76,7 @@ class DummyTrainer(object):
                  action_normalize: bool = False,
                  learn_deltas: bool = False,
                  record_test_video: bool = False,
+                 checkpoint_folder: str = "./",
                  video_prefix: str = "",
                  video_folder: str = "./",
                  test_env: Optional[Union[VecEnv, Env]] = None,
@@ -86,6 +106,7 @@ class DummyTrainer(object):
         self.agent = agent
         now = datetime.now()
         dt_string = now.strftime("%d_%m_%Y_%H_%M_%S")
+        self.checkpoint_folder = checkpoint_folder
         self.video_dir_name = video_folder + 'video' + str(seed) + video_prefix + dt_string
         self.record_test_video = record_test_video
 
@@ -141,13 +162,54 @@ class DummyTrainer(object):
     def train(self):
         pass
 
+    def _get_state(self) -> DummyTrainerState:
+        return DummyTrainerState(
+            buffer=self.buffer,
+            agent=self.agent,
+            rng=self.rng,
+            eval_episodes=self.eval_episodes,
+            agent_name=self.agent_name,
+            total_train_steps=self.total_train_steps,
+            train_freq=self.train_freq,
+            eval_freq=self.eval_freq,
+            exploration_steps=self.exploration_steps,
+            rollout_steps=self.rollout_steps,
+            validate=self.validate,
+            record_test_video=self.record_test_video,
+            video_dir_name=self.video_dir_name
+        )
+    
+    def _set_state(self, state: DummyTrainerState):
+        # NOTE: does not set env, this must be passed at initialization
+        self.buffer = state.buffer
+        self.agent = state.agent
+        self.rng = state.rng
+        self.eval_episodes = state.eval_episodes
+        self.agent_name = state.agent_name
+        self.total_train_steps = state.total_train_steps
+        self.train_freq = state.train_freq
+        self.eval_freq = state.eval_freq
+        self.exploration_steps = state.exploration_steps
+        self.rollout_steps = state.rollout_steps
+        self.eval_episodes = state.eval_episodes
+        self.validate = state.validate
+        self.record_test_video = state.record_test_video
+        self.video_dir_name = state.video_dir_name
+
     def save_agent(self, step=0, agent_name=None):
-        # TODO implement this function
-        pass
+        training_state = self._get_state()
+        if agent_name is None:
+            agent_name = "agent"
+        file_name = f"{agent_name}_step_{step}.pkl"
+        file_path = str(Path(self.checkpoint_folder)/file_name)
+        cloudpickle.dump(training_state, open(file_path, 'wb'))
 
     def load_agent(self, agent_directory: str):
-        # TODO implement this function
-        pass
+        training_state = cloudpickle.load(open(agent_directory, 'rb'))
+        self._set_state(training_state)
+
+    def set_total_trainer_steps(self, n: int):
+        self.total_train_steps = n
 
     def step_env(self, obs: Union[jax.Array, np.ndarray], policy: Callable, num_steps: int,
                  rng: jax.random.PRNGKeyArray) -> [Transition, Union[jax.Array, np.ndarray],
