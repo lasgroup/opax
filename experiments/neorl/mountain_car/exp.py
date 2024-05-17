@@ -28,6 +28,8 @@ def experiment(
         time_limit_eval: int, action_cost: float = 0.0, action_repeat: int = 1, lr: float = 1e-3,
         colored_noise_exponent: float = 0.25, calibrate_model: bool = True,
 ):
+    if exploration_strategy == 'Thompson':
+        n_particles = 1
     optimizer_config = dict(
         num_samples=num_samples,
         num_elites=num_elites,
@@ -134,7 +136,10 @@ def experiment(
             deterministic=deterministic,
             lr=lr,
         )
-        video_prefix += 'PETS'
+        if exploration_strategy == 'Thompson':
+            video_prefix += 'Thompson'
+        else:
+            video_prefix += 'PETS'
 
     elif exploration_strategy == 'HUCRL':
         dynamics_model = HUCRLModel(

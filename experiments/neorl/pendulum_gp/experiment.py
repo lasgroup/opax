@@ -25,6 +25,8 @@ def experiment(
         time_limit_eval: int, action_cost: float = 0.0, action_repeat: int = 1, lr: float = 1e-3,
         colored_noise_exponent: float = 0.25, calibrate_model: bool = True,
 ):
+    if exploration_strategy == 'Thompson':
+        n_particles = 1
     optimizer_config = dict(
         num_samples=num_samples,
         num_elites=num_elites,
@@ -114,7 +116,7 @@ def experiment(
             beta=0.0,
         )
 
-    elif exploration_strategy == 'PETS':
+    elif exploration_strategy in ['PETS', 'Thompson']:
         dynamics_model = GPDynamicsModel(
             action_space=env.action_space,
             observation_space=env.observation_space,
@@ -124,7 +126,10 @@ def experiment(
             sampling_type=GPSamplingType(optimistic=False, mean=False, random=True),
             beta=0.0,
         )
-        video_prefix += 'PETS'
+        if exploration_strategy == 'Thompson':
+            video_prefix += 'Thompson'
+        else:
+            video_prefix += 'PETS'
 
     elif exploration_strategy == 'HUCRL':
         dynamics_model = GPDynamicsModel(

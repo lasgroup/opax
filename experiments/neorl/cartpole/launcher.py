@@ -36,7 +36,7 @@ _applicable_configs = {
     'record_test_video': [1],
     'validation_buffer_size': [0],
     'validation_batch_size': [64],
-    'action_cost': [0.2],
+    'action_cost': [0.0, 0.1, 0.2],
     'time_limit_eval': [400],
     'action_repeat': [2],
     'lr': [1e-3],
@@ -47,9 +47,10 @@ _applicable_configs = {
 _applicable_configs_hucrl = {'exploration_strategy': ['HUCRL'], 'beta': [2.0]} | _applicable_configs
 _applicable_configs_pets = {'exploration_strategy': ['PETS'], 'beta': [0.0]} | _applicable_configs
 _applicable_configs_mean = {'exploration_strategy': ['Mean'], 'beta': [0.0]} | _applicable_configs
+_applicable_configs_thompson = {'exploration_strategy': ['Thompson'], 'beta': [0.0]} | _applicable_configs
 
 all_flags_combinations = dict_permutations(_applicable_configs_hucrl) + dict_permutations(_applicable_configs_pets) \
-                         + dict_permutations(_applicable_configs_mean)
+                         + dict_permutations(_applicable_configs_mean) + dict_permutations(_applicable_configs_thompson)
 
 
 def main(args):

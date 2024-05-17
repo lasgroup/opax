@@ -27,6 +27,8 @@ def experiment(
         time_limit_eval: int, action_cost: float = 0.0, action_repeat: int = 1, lr: float = 1e-3,
         colored_noise_exponent: float = 0.25, calibrate_model: bool = True,
 ):
+    if exploration_strategy == 'Thompson':
+        n_particles = 1
     optimizer_config = dict(
         num_samples=num_samples,
         num_elites=num_elites,
@@ -104,8 +106,8 @@ def experiment(
     test_env = [test_env]
     features = tuple([num_neurons] * hidden_layers)
     reward_model_keep_up = PendulumReward(action_space=env.action_space,
-                                            target_angle=env_kwargs_keep_up['target_angle'],
-                                            ctrl_cost_weight=action_cost)
+                                          target_angle=env_kwargs_keep_up['target_angle'],
+                                          ctrl_cost_weight=action_cost)
     reward_model_keep_up.set_bounds(max_action=1.0)
 
     video_prefix = ""
@@ -124,7 +126,7 @@ def experiment(
             lr=lr,
         )
 
-    elif exploration_strategy == 'PETS':
+    elif exploration_strategy in ['PETS', 'Thompson']:
         dynamics_model = BayesianDynamicsModel(
             action_space=env.action_space,
             observation_space=env.observation_space,
@@ -136,7 +138,10 @@ def experiment(
             deterministic=deterministic,
             lr=lr,
         )
-        video_prefix += 'PETS'
+        if exploration_strategy == 'Thompson':
+            video_prefix += 'Thompson'
+        else:
+            video_prefix += 'PETS'
 
     elif exploration_strategy == 'HUCRL':
         dynamics_model = HUCRLModel(
