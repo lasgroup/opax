@@ -24,7 +24,7 @@ required = [
     'dm_control==1.0.10',
     'trajax @ git+ssh://git@github.com/lenarttreven/trajax.git',
     'jaxtyping~=0.2.28',
-    'moviepy'
+    'moviepy',
     'mujoco<=2.3.7',
     'pyelastica==0.3.2',
     'pyglet==2.0.15',
