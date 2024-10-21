@@ -11,12 +11,14 @@ import jax
 from functools import partial
 from typing import Union, Optional, Any
 from opax.utils.type_aliases import ModelProperties
+from opax.models.environment_models.tolerance_reward import ToleranceReward
 
 
 class PendulumReward(RewardModel):
     """Get Pendulum Reward."""
 
-    def __init__(self, action_space: gym.Space, ctrl_cost_weight: float = 0.001, target_angle: float = 0.0,
+    def __init__(self, action_space: gym.Space,
+                 ctrl_cost_weight: float = 0.001, target_angle: float = 0.0,
                  sparse: bool = False,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -26,6 +28,9 @@ class PendulumReward(RewardModel):
         self.max_action = None
         self.action_space = action_space
         self.target_angle = target_angle
+        self.tolerance_reward_cos_theta = ToleranceReward(margin=0.1, bounds=(0.95, 1.0))
+        self.tolerance_reward_omega = ToleranceReward(margin=0.5, bounds=(-0.5, 0.5))
+        self.tolerance_reward_act = ToleranceReward(margin=0.1, bounds=(-0.1, 0.1))
         self._init_fn()
 
     def _init_fn(self):
@@ -35,10 +40,17 @@ class PendulumReward(RewardModel):
                                                                           low=self.action_space.low,
                                                                           high=self.action_space.high,
                                                                           ))
-        self.input_cost = jax.jit(lambda u: self._input_cost(ctrl_cost_weight=self.ctrl_cost_weight, u=u))
+        if self.sparse:
+            self.input_cost = jax.jit(lambda u: self._input_cost_sparse(ctrl_cost_weight=self.ctrl_cost_weight, u=u))
+        else:
+            self.input_cost = jax.jit(lambda u: self._input_cost(ctrl_cost_weight=self.ctrl_cost_weight, u=u))
 
-        def state_reward_fn(state):
-            return self.state_reward(state=state, target_angle=self.target_angle)
+        if self.sparse:
+            def state_reward_fn(state):
+                return self.state_sparse_reward(state=state, target_angle=self.target_angle)
+        else:
+            def state_reward_fn(state):
+                return self.state_reward(state=state, target_angle=self.target_angle)
 
         def predict(obs, action, next_obs=None, rng=None):
             return self._predict(
@@ -67,9 +79,21 @@ class PendulumReward(RewardModel):
         theta = angle_normalize(theta)
         return -(theta ** 2 + 0.1 * omega ** 2)
 
+    @partial(jax.jit, static_argnums=0)
+    def state_sparse_reward(self, state, target_angle: float = 0.0):
+        theta, omega = jnp.arctan2(state[..., 1], state[..., 0]), state[..., 2]
+        cos_theta = jnp.cos(theta - target_angle)
+        cos_theta_reward = self.tolerance_reward_cos_theta(cos_theta)
+        omega_reward = self.tolerance_reward_omega(omega)
+        return cos_theta_reward * omega_reward
+
     @staticmethod
     def _input_cost(ctrl_cost_weight, u):
         return ctrl_cost_weight * (jnp.sum(jnp.square(u), axis=-1))
+
+    def _input_cost_sparse(self, ctrl_cost_weight, u):
+        control_rew = self.tolerance_reward_act(u)
+        return -ctrl_cost_weight * control_rew
 
     @staticmethod
     @jax.jit
@@ -114,12 +138,19 @@ class PendulumReward(RewardModel):
 
 
 class CustomPendulumEnv(PendulumEnv):
-    def __init__(self, ctrl_cost=0.001, render_mode='rgb_array', target_angle: float = 0.0, *args, **kwargs):
+    def __init__(self, ctrl_cost=0.001, render_mode='rgb_array', target_angle: float = 0.0,
+                 sparse: bool = False,
+                 *args, **kwargs):
         self.state = None
         super(CustomPendulumEnv, self).__init__(render_mode=render_mode, *args, **kwargs)
         self.observation_space.sample = self.sample_obs
         self.ctrl_cost = ctrl_cost
         self.target_angle = target_angle
+        self.rew_model = PendulumReward(action_space=self.action_space,
+                                        target_angle=target_angle,
+                                        ctrl_cost_weight=ctrl_cost,
+                                        sparse=sparse,
+                                        )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed, options=options)
@@ -135,10 +166,12 @@ class CustomPendulumEnv(PendulumEnv):
 
     def step(self, u):
         th, thdot = self.state
+        obs = self._get_obs()
         diff = th - self.target_angle
-        costs = angle_normalize(diff) ** 2 + 0.1 * thdot ** 2 + self.ctrl_cost * (u ** 2)
+        # costs = angle_normalize(diff) ** 2 + 0.1 * thdot ** 2 + self.ctrl_cost * (u ** 2)
         next_obs, reward, terminate, truncate, output_dict = super().step(u)
-        reward = -costs
+        reward = self.rew_model.predict(obs, u)
+        # reward = -costs
         return next_obs, reward, terminate, truncate, output_dict
 
 
