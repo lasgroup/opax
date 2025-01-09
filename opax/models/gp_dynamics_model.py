@@ -35,11 +35,15 @@ class GPDynamicsModel(DynamicsModel):
                  is_active_exploration_model: bool = False,
                  beta: float = 1.0,
                  action_cost: float = 0.0,
+                 use_ombrl: bool = False,
                  *args,
                  **kwargs
                  ):
         super(GPDynamicsModel, self).__init__(*args, **kwargs)
         self.reward_model = reward_model
+        self.use_ombrl = use_ombrl
+        if self.use_ombrl:
+            sampling_type = GPSamplingType(optimistic=False, mean=True, random=False)
 
         obs_dim = np.prod(observation_space.shape).item()
         act_dim = np.prod(action_space.shape).item()
@@ -202,6 +206,29 @@ class GPDynamicsModel(DynamicsModel):
                 return next_obs, reward
 
             self.evaluate_for_exploration = jax.jit(evaluate_for_exploration)
+        elif self.use_ombrl:
+            def evaluate_for_exploration(
+                    parameters,
+                    obs,
+                    action,
+                    rng,
+                    model_props: ModelProperties = ModelProperties(),
+                    *args,
+                    **kwargs,
+            ):
+                return self._evaluate_ombrl(
+                    pred_with_uncertainty=self.predict_with_uncertainty,
+                    reward_fn=self.reward_model.predict,
+                    parameters=parameters,
+                    obs=obs,
+                    action=action,
+                    rng=rng,
+                    beta=self.beta,
+                    model_props=model_props,
+                    act_dim=self.act_dim,
+                    use_log_uncertainties=False,
+                )
+            self.evaluate_for_exploration = jax.jit(evaluate_for_exploration)
         else:
             def evaluate_for_exploration(
                     parameters,
@@ -349,6 +376,44 @@ class GPDynamicsModel(DynamicsModel):
         else:
             reward = jnp.sum(next_obs_std, axis=-1)
 
+        return next_obs, reward
+
+    @staticmethod
+    def _evaluate_ombrl(
+            pred_with_uncertainty: Callable,
+            reward_fn: Callable,
+            act_dim: int,
+            parameters: PyTree,
+            obs: chex.Array,
+            action: chex.Array,
+            rng: jax.random.PRNGKeyArray,
+            beta: float,
+            model_props: ModelProperties = ModelProperties(),
+            use_log_uncertainties: bool = False,
+            *args,
+            **kwargs
+    ) -> [chex.Array, chex.Array]:
+        """Predicts the next state with intrinsic reward"""
+        model_rng = None
+        if rng is not None:
+            rng, model_rng = jax.random.split(rng, 2)
+            rng, reward_rng = jax.random.split(rng, 2)
+        next_obs, next_obs_std = pred_with_uncertainty(
+            parameters=parameters,
+            obs=obs,
+            action=action,
+            rng=model_rng,
+            model_props=model_props,
+        )
+        if use_log_uncertainties:
+            int_reward = jnp.sum(jnp.log(EPS + jnp.square(next_obs_std)), axis=-1)
+        else:
+            int_reward = jnp.sum(next_obs_std, axis=-1)
+
+        act, _ = jnp.split(action, axis=-1, indices_or_sections=[act_dim])
+        reward = reward_fn(obs, act, next_obs, reward_rng)
+
+        reward = reward + beta * int_reward
         return next_obs, reward
 
     @property
